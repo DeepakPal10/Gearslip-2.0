@@ -306,7 +306,7 @@ fun CarSettingsScreen() {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             SubGroup(stringResource(R.string.settings_connection))
                             val none = stringResource(R.string.status_idle)
-                            Info(stringResource(R.string.carset_phone), "${Build.MANUFACTURER}${Build.MODEL}")
+                            Info(stringResource(R.string.carset_phone), "${Build.MANUFACTURER} ${Build.MODEL}")
                             Info(stringResource(R.string.carset_vehicle), vehicle.ifEmpty { none })
                             Info(stringResource(R.string.carset_video), display.ifEmpty { none })
                         }
@@ -406,4 +406,315 @@ private fun CustomCarAppsSetting() {
                                 )
                                 Text(
                                     appInfo.packageName,
-                                    style = MaterialTheme.typography.body
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                            Spacer(Modifier.width(10.dp))
+                            GsButton(
+                                onClick = { launchCustomCarApp(context, appInfo.packageName) },
+                                tone = GsTone.Tonal,
+                                modifier = Modifier.height(40.dp),
+                            ) {
+                                Text("Run", style = MaterialTheme.typography.labelLarge)
+                            }
+                            Spacer(Modifier.width(10.dp))
+                            GsSwitch(
+                                checked = checked,
+                                onCheckedChange = { isOn ->
+                                    val updated = if (isOn) selected + appInfo.packageName else selected - appInfo.packageName
+                                    selected = updated
+                                    setSelectedCustomCarApps(context, updated)
+                                },
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SubGroup(title: String) {
+    Text(title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+}
+
+@Composable
+private fun Note(text: String) {
+    Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+}
+
+@Composable
+private fun <T> ChoiceRow(title: String, options: List<Pair<T, String>>, selected: T, onSelect: (T) -> Unit) {
+    androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxWidth()) {
+        if (maxWidth >= 720.dp && options.size <= 4) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(0.3f))
+                Box(Modifier.weight(0.7f)) { ChoiceButtons(options, selected, onSelect) }
+            }
+        } else {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(title, style = MaterialTheme.typography.titleMedium)
+                ChoiceButtons(options, selected, onSelect)
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingsRail(groups: List<String>, chosen: Int, onChoose: (Int) -> Unit) {
+    val scheme = MaterialTheme.colorScheme
+    val shape = RoundedCornerShape(24.dp)
+    Surface(
+        Modifier.width(250.dp).padding(bottom = 12.dp).fillMaxHeight().gsPanelShadow(shape),
+        shape = shape,
+        color = scheme.surfaceContainer,
+    ) {
+        Column(
+            Modifier.padding(10.dp).verticalScroll(androidx.compose.foundation.rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(
+                stringResource(R.string.settings_title),
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(start = 14.dp, top = 6.dp, bottom = 10.dp),
+            )
+            groups.forEachIndexed { i, name ->
+                val on = i == chosen
+                GsIconBox(
+                    onClick = { onChoose(i) },
+                    modifier = Modifier.fillMaxWidth().height(56.dp),
+                    colors = if (on) GsColors(scheme.primaryContainer, scheme.onPrimaryContainer)
+                    else GsColors(Color.Transparent, scheme.onSurface),
+                    latched = on,
+                ) {
+                    Text(
+                        name,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = if (on) FontWeight.Bold else FontWeight.Normal,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun Group(title: String) {
+    Text(
+        title,
+        style = MaterialTheme.typography.titleLarge,
+        fontWeight = FontWeight.Bold,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(top = 12.dp),
+    )
+}
+
+@Composable
+private fun <T> ChoiceButtons(options: List<Pair<T, String>>, selected: T, onSelect: (T) -> Unit) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        options.forEach { (value, label) ->
+            val on = value == selected
+            val scheme = MaterialTheme.colorScheme
+            GsIconBox(
+                onClick = { onSelect(value) },
+                modifier = Modifier
+                    .weight(1f)
+                    .height(64.dp),
+                colors = if (on) GsColors(scheme.primaryContainer, scheme.onPrimaryContainer)
+                else GsColors(scheme.surfaceContainerHigh, scheme.onSurface),
+                latched = on,
+            ) {
+                Text(
+                    label,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = if (on) FontWeight.Bold else FontWeight.Normal,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(horizontal = 8.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ExperimentalFeaturesList(carSensors: Boolean, adaptiveVideo: Boolean, clusterVideo: Boolean) {
+    Column(
+        Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        SwitchRow(
+            title = stringResource(R.string.car_vehicle_data),
+            description = stringResource(R.string.carset_vehicle_data_note),
+            checked = carSensors,
+        ) { CarSettings.setCarSensorsEnabled(it) }
+        SwitchRow(
+            title = stringResource(R.string.car_adaptive_video),
+            description = stringResource(R.string.carset_adaptive_note),
+            checked = adaptiveVideo,
+        ) { CarSettings.setAdaptiveVideoEnabled(it) }
+        SwitchRow(
+            title = stringResource(R.string.car_cluster_video),
+            description = "Show video on instrument cluster display when supported",
+            checked = clusterVideo,
+        ) { CarSettings.setClusterVideoEnabled(it) }
+    }
+}
+
+@Composable
+private fun SwitchRow(
+    title: String,
+    description: String?,
+    checked: Boolean,
+    warning: Boolean = false,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Surface(
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(title, style = MaterialTheme.typography.titleMedium)
+                if (description != null) Text(
+                    description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (warning) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            GsSwitch(checked, onCheckedChange)
+        }
+    }
+}
+
+@Composable
+private fun WebPageSetting() {
+    val context = LocalContext.current
+    var editing by remember { mutableStateOf(false) }
+    var url by remember { mutableStateOf(AppSettings.startupUrl(context)) }
+
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(stringResource(R.string.web_page), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+        Surface(
+            onClick = { editing = !editing },
+            shape = MaterialTheme.shapes.large,
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(
+                url.ifEmpty { stringResource(R.string.carset_web_default) },
+                style = MaterialTheme.typography.bodyLarge,
+                color = if (url.isEmpty()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+            )
+        }
+        Text(
+            stringResource(R.string.carset_web_note),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        if (editing) {
+            CarKeyboard(
+                url,
+                onTextChange = {
+                    url = it
+                    AppSettings.setStartupUrl(context, it)
+                },
+                onSubmit = { editing = false },
+                onDismiss = { editing = false },
+            )
+        }
+    }
+}
+
+@Composable
+private fun Info(label: String, value: String) {
+    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(label, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(end = 4.dp))
+        Text(value, style = MaterialTheme.typography.bodyLarge)
+    }
+}
+
+@Composable
+private fun ScreenFit(vehicle: String) {
+    val insets by CarEnvironment.insets.collectAsState()
+    val context = LocalContext.current.applicationContext
+    var saved by remember { mutableStateOf<String?>(null) }
+    val known = vehicle.isNotEmpty() && vehicle != "Unknown vehicle"
+
+    fun change(new: app.seb3thehacker.gearslip.Insets) {
+        saved = null
+        CarEnvironment.setInsets(new)
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(stringResource(R.string.carset_screen_fit), style = MaterialTheme.typography.titleMedium)
+        Stepper(stringResource(R.string.carset_top), insets.top) { change(insets.copy(top = (insets.top + it).coerceAtLeast(0))) }
+        Stepper(stringResource(R.string.carset_bottom), insets.bottom) { change(insets.copy(bottom = (insets.bottom + it).coerceAtLeast(0))) }
+        Text(
+            stringResource(R.string.carset_usable_height, 480 - insets.top - insets.bottom),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        if (known) GsButton(
+            onClick = {
+                val ok = app.seb3thehacker.gearslip.VehicleProfiles.saveInsets(context, vehicle, insets)
+                saved = if (ok) context.getString(R.string.carset_saved_to, vehicle) else context.getString(R.string.carset_save_failed)
+            },
+            modifier = Modifier.fillMaxWidth().height(56.dp),
+        ) { Text(stringResource(R.string.carset_save_vehicle)) }
+        else Note(stringResource(R.string.carset_fit_needs_car))
+        saved?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+    }
+}
+
+@Composable
+private fun Stepper(label: String, value: Int, onStep: (Int) -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(label, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1.1f))
+        StepButton("−5", Modifier.weight(1f)) { onStep(-5) }
+        StepButton("−1", Modifier.weight(1f)) { onStep(-1) }
+        Text(
+            stringResource(R.string.carset_px, value),
+            style = MaterialTheme.typography.titleLarge,
+            modifier = Modifier.weight(1.3f),
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+        )
+        StepButton("+1", Modifier.weight(1f)) { onStep(1) }
+        StepButton("+5", Modifier.weight(1f)) { onStep(5) }
+    }
+}
+
+@Composable
+private fun StepButton(text: String, modifier: Modifier, onClick: () -> Unit) {
+    GsIconBox(
+        onClick = onClick,
+        modifier = modifier.height(64.dp),
+        colors = GsColors(MaterialTheme.colorScheme.surfaceContainerHigh, MaterialTheme.colorScheme.onSurface),
+        shape = MaterialTheme.shapes.large,
+    ) {
+        Text(text, style = MaterialTheme.typography.titleLarge)
+    }
+}
+
+private val SCREEN_PRESETS = listOf(
+    ScreenSize(800, 480), ScreenSize(1024, 600), ScreenSize(1280, 480), ScreenSize(1280, 720),
+    ScreenSize(1440, 540), ScreenSize(1920, 720), ScreenSize(1920, 1080),
+)
