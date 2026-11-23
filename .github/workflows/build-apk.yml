@@ -28,4 +28,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Gearslip-Custom-APK
-          path: gearslip/build/outputs/apk/**/*.apk
+          path: build/Gearslip-*.apk
