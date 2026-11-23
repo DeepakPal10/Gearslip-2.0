@@ -362,12 +362,14 @@ fun CarUi() {
                             DebugBuildBadge(Modifier.align(Alignment.BottomEnd).padding(bottom = homeInset))
                         }
                         run {
-                            androidx.compose.animation.AnimatedVisibility(
-                                if (fullscreen) CarFullscreen.revealed || onCall else barShown,
-                                Modifier.align(Alignment.BottomCenter),
-                                enter = androidx.compose.animation.slideInVertically { it },
-                                exit = androidx.compose.animation.slideOutVertically { it },
-                            ) { CarNavBar(navigator) }
+                              androidx.compose.animation.AnimatedVisibility(
+                              visible = if (fullscreen) CarFullscreen.revealed || onCall else barShown,
+                              modifier = Modifier.align(Alignment.CenterStart).fillMaxHeight(),
+                              enter = androidx.compose.animation.slideInHorizontally { -it },
+                              exit = androidx.compose.animation.slideOutHorizontally { -it },
+                         ) {
+                              CarNavBar(navigator)
+                         }
                         }
                         if (fullscreen) {
                             androidx.compose.animation.AnimatedVisibility(

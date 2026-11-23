@@ -1,80 +1,76 @@
 package app.seb3thehacker.gearslip.car
 
-import androidx.compose.ui.res.stringResource
-import app.seb3thehacker.gearslip.R
-import app.seb3thehacker.gearslip.car.theme.*
-import androidx.compose.foundation.Image
+import android.content.Context
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid 
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.withFrameNanos
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
-import app.seb3thehacker.gearslip.AppSettings
-import kotlinx.coroutines.launch
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.drawable.toBitmap
-import android.content.Context
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.ui.graphics.Color
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.border
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.lazy.grid.GridItemSpan
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Warning
-import app.seb3thehacker.gearslip.host.KnownApps
+import app.seb3thehacker.gearslip.AppSettings
+import app.seb3thehacker.gearslip.R
+import app.seb3thehacker.gearslip.car.theme.GsColors
+import app.seb3thehacker.gearslip.car.theme.GsIconBox
 import app.seb3thehacker.gearslip.host.CarAppCatalog
+import app.seb3thehacker.gearslip.host.KnownApps
 import app.seb3thehacker.gearslip.host.TemplateApp
 import app.seb3thehacker.gearslip.media.MediaApp
 import app.seb3thehacker.gearslip.media.MediaCatalog
 import app.seb3thehacker.gearslip.notify.MessagingApp
 import app.seb3thehacker.gearslip.notify.MessagingCatalog
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /** One tile on the launcher: either a phone app's own icon or a built-in glyph. */
@@ -82,10 +78,8 @@ private class Tile(
     val label: String,
     val icon: ImageBitmap? = null,
     val glyph: ImageVector? = null,
-    /** Known not to work; drawn with a red X instead of being left off the launcher. */
     val broken: Boolean = false,
     val onLongClick: (() -> Unit)? = null,
-    /** The entry's [Entry.componentId], for finding the app opened last. */
     val id: String? = null,
     val onClick: () -> Unit,
 )
@@ -99,7 +93,6 @@ internal class Entry(
     val builtIn: BuiltInApp? = null,
     val messaging: MessagingApp? = null,
 ) {
-    /** What a pin or a nav-bar shortcut remembers this entry as; null for nothing pinnable. */
     val componentId: String?
         get() = builtIn?.let { BUILT_IN_PREFIX + it.id }
             ?: messaging?.let { MESSAGING_PREFIX + it.packageName }
@@ -109,23 +102,13 @@ internal class Entry(
         get() = template?.component?.packageName ?: media?.component?.packageName ?: messaging?.packageName
 }
 
-/** A messaging app has no component of its own to open, so its pin carries the package instead. */
 internal const val MESSAGING_PREFIX = "messages:"
 
-/**
- * The installed car and media apps with their icons. Scanning the package manager and decoding
- * icons is slow, so [Prefetch] does it ahead of time and again at the start of each car session,
- * which is when new installs are picked up.
- */
 internal object LauncherCache {
-    /** Observed, not read once: the nav bar is drawn before the car session's rescan finishes,
-     * and an app installed since the last scan has to show up there when it does. */
     private val flow = MutableStateFlow<List<Entry>?>(null)
     val state: StateFlow<List<Entry>?> = flow.asStateFlow()
-
     val entries: List<Entry>? get() = flow.value
 
-    /** Returns the scan if there is one; [force] rescans. Synchronized so two callers share one scan. */
     @Synchronized
     fun load(context: Context, force: Boolean = false): List<Entry> {
         if (!force) entries?.let { return it }
@@ -137,8 +120,6 @@ internal object LauncherCache {
         val mediaApps = MediaCatalog.installed(context).associateBy { it.component.packageName }
         val messagingApps = MessagingCatalog.installed(context).associateBy { it.packageName }
 
-        // One decision per app over everything it offers a car - a car screen, a player, car
-        // notifications - rather than a filter per kind that has to know about the others.
         val tiles = (carApps.keys + mediaApps.keys + messagingApps.keys).flatMap { pkg ->
             val icon by lazy { iconOf(pkg) }
             tilesFor(carApps[pkg], mediaApps[pkg], messagingApps[pkg], context.getString(R.string.media_browse)).map { tile ->
@@ -157,30 +138,16 @@ internal object LauncherCache {
     }
 }
 
-/** What one app gets on the launcher. */
 private sealed interface AppTile {
     class Screen(val app: TemplateApp, val label: String) : AppTile
-    class Player(val app: app.seb3thehacker.gearslip.media.MediaApp) : AppTile
-    class Messages(val app: app.seb3thehacker.gearslip.notify.MessagingApp) : AppTile
+    class Player(val app: MediaApp) : AppTile
+    class Messages(val app: MessagingApp) : AppTile
 }
 
-/**
- * The tiles for one app, from what it offers.
- *
- * - A car screen that is something other than media or messaging (RF Sentinel's POI screen) is
- *   the app: its media service only makes sound, and its notifications are alerts, so it gets the
- *   one tile under its own name.
- * - A media app with both a car screen and a player (Spotify) gets both, the screen labelled
- *   "· Browse", since they really are different screens - unless the screen is known to refuse
- *   Gearslip while the player works, when the Browse tile would only report that.
- * - A messenger's own car screen (Google Messages) won't start under Gearslip, and Gearslip's
- *   Messages screen does the job, so it gets only that - and a messenger that is also a media
- *   app keeps only its player.
- */
 private fun tilesFor(
     car: TemplateApp?,
-    media: app.seb3thehacker.gearslip.media.MediaApp?,
-    messaging: app.seb3thehacker.gearslip.notify.MessagingApp?,
+    media: MediaApp?,
+    messaging: MessagingApp?,
     browse: String,
 ): List<AppTile> {
     if (car != null && !car.isMediaScreen && car.kind != "messaging") return listOf(AppTile.Screen(car, car.label))
@@ -196,7 +163,6 @@ private fun tilesFor(
     }
 }
 
-/** Every app the launcher knows: Gearslip's own and the installed ones, rescans included. */
 @Composable
 internal fun rememberAllEntries(): List<Entry> {
     val context = LocalContext.current
@@ -210,7 +176,6 @@ internal fun rememberAllEntries(): List<Entry> {
     }
 }
 
-/** The launcher's groups, in the order they're laid out. */
 private enum class AppGroup { PHONE, MAPS, MUSIC, MESSAGING, WEB, SCREEN_SHARING, OTHER, SETTINGS, EXIT }
 
 private fun groupOf(entry: Entry, mediaPackages: Set<String>): AppGroup {
@@ -226,12 +191,10 @@ private fun groupOf(entry: Entry, mediaPackages: Set<String>): AppGroup {
     if (entry.media != null) return AppGroup.MUSIC
     if (entry.messaging != null) return AppGroup.MESSAGING
     val app = entry.template ?: return AppGroup.OTHER
-    // A media app's "· Browse" tile sits next to its player.
     if (app.component.packageName in mediaPackages) return AppGroup.MUSIC
     return when (app.kind) {
         "calling" -> AppGroup.PHONE
         "navigation", "poi", "parking", "charging" -> AppGroup.MAPS
-        // Template-only media apps may have no legacy browser/player tile to identify them.
         "media" -> AppGroup.MUSIC
         "messaging" -> AppGroup.MESSAGING
         "settings" -> AppGroup.SETTINGS
@@ -239,12 +202,6 @@ private fun groupOf(entry: Entry, mediaPackages: Set<String>): AppGroup {
     }
 }
 
-/**
- * The launcher's tiles in the order they're drawn: grouped by [AppGroup], alphabetical inside a
- * group with Settings last of all, then with the driver's own moves from [custom] laid over it.
- * Moved apps only trade places among themselves, so an app installed later still lands in its group.
- * [hidden] leaves tiles out of the drawer only: a pinned app stays on the nav bar.
- */
 internal fun launcherOrder(all: List<Entry>, showVehicleData: Boolean, custom: List<String>, hidden: Set<String>): List<Entry> {
     val shown = all.filter { (it.builtIn !== BuiltInApps.VehicleData || showVehicleData) && it.componentId !in hidden }
     val mediaPackages = shown.mapNotNull { it.media?.component?.packageName }.toSet()
@@ -258,18 +215,11 @@ internal fun launcherOrder(all: List<Entry>, showVehicleData: Boolean, custom: L
     return grouped.map { if (it.rank() != null) moved.next() else it }
 }
 
-/** An app by the id a pin or the running list knows it by, built-in or installed. */
 internal fun findEntry(id: String): Entry? =
     BuiltInApps.everyEntry.find { it.componentId == id } ?: LauncherCache.entries?.find { it.componentId == id }
 
-/** Rescans the car and media apps now, replacing the cached list; the launcher keeps showing the old one meanwhile. */
 fun warmLauncherApps(context: Context) { LauncherCache.load(context, force = true) }
 
-/**
- * Connects or opens [entry] - what tapping its tile does, shared with the nav bar's pinned
- * shortcuts and its open-app icon so there is exactly one place that knows how to launch either
- * kind of app.
- */
 internal fun launchEntry(entry: Entry, navigator: CarNavigator, frame: CarEnvironment.Frame) {
     entry.builtIn?.let { it.open(navigator); return }
     entry.template?.let {
@@ -285,14 +235,79 @@ internal fun launchEntry(entry: Entry, navigator: CarNavigator, frame: CarEnviro
     entry.messaging?.let { navigator.messages(it.packageName, it.label) }
 }
 
-/** The app launcher: every app as an icon grid, grouped Phone, Maps, Music, Messaging, Web, Screen sharing, Settings. */
+/** Apple CarPlay-style wave wallpaper rendered smoothly via Canvas. */
+@Composable
+internal fun CarPlayWallpaper(modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier.fillMaxSize()) {
+        val w = size.width
+        val h = size.height
+
+        // Deep midnight navy-indigo base
+        drawRect(
+            brush = Brush.linearGradient(
+                colors = listOf(Color(0xFF0A142D), Color(0xFF10224C), Color(0xFF0B1328)),
+                start = Offset(0f, 0f),
+                end = Offset(w, h),
+            )
+        )
+
+        // Warm amber / gold wave sweep on upper-mid right
+        val goldWave = Path().apply {
+            moveTo(w * 0.22f, 0f)
+            cubicTo(w * 0.45f, h * 0.35f, w * 0.72f, h * 0.15f, w * 0.92f, h * 0.58f)
+            lineTo(w, h * 0.58f)
+            lineTo(w, 0f)
+            close()
+        }
+        drawPath(
+            path = goldWave,
+            brush = Brush.radialGradient(
+                colors = listOf(Color(0xFFE69F1E).copy(alpha = 0.88f), Color(0xFFD96B27).copy(alpha = 0.25f), Color.Transparent),
+                center = Offset(w * 0.62f, h * 0.26f),
+                radius = w * 0.45f,
+            )
+        )
+
+        // Violet / magenta wave curve
+        val violetWave = Path().apply {
+            moveTo(w * 0.32f, h)
+            cubicTo(w * 0.42f, h * 0.45f, w * 0.78f, h * 0.48f, w, h * 0.22f)
+            lineTo(w, h)
+            close()
+        }
+        drawPath(
+            path = violetWave,
+            brush = Brush.linearGradient(
+                colors = listOf(Color(0xFF6A24B8).copy(alpha = 0.85f), Color(0xFF2848B8).copy(alpha = 0.65f)),
+                start = Offset(w * 0.45f, h * 0.45f),
+                end = Offset(w, h),
+            )
+        )
+
+        // Emerald / teal wave along lower-left
+        val greenWave = Path().apply {
+            moveTo(0f, h * 0.42f)
+            cubicTo(w * 0.25f, h * 0.48f, w * 0.36f, h * 0.78f, w * 0.62f, h)
+            lineTo(0f, h)
+            close()
+        }
+        drawPath(
+            path = greenWave,
+            brush = Brush.linearGradient(
+                colors = listOf(Color(0xFF1F7A5C).copy(alpha = 0.85f), Color(0xFF14426E).copy(alpha = 0.55f)),
+                start = Offset(0f, h * 0.45f),
+                end = Offset(w * 0.55f, h),
+            )
+        )
+    }
+}
+
 @Composable
 fun CarLauncher() {
     val context = LocalContext.current
     val navigator = LocalCarNavigator.current
     val frame by CarEnvironment.frame.collectAsState()
 
-    // Painted from the cache at once; scanned only if [Prefetch] has not got there first.
     val all = rememberAllEntries()
     val running = rememberRunningApps()
     val showVehicleData = rememberVehicleDataShown()
@@ -300,7 +315,9 @@ fun CarLauncher() {
     fun tileOf(entry: Entry): Tile {
         val id = entry.componentId
         return Tile(
-            entry.builtIn?.let { context.getString(it.labelRes) } ?: entry.label, entry.icon, entry.builtIn?.glyph,
+            entry.builtIn?.let { context.getString(it.labelRes) } ?: entry.label,
+            entry.icon,
+            entry.builtIn?.glyph,
             broken = markedBroken(context, entry),
             onLongClick = id?.let { { navigator.showAppMenu(it) } },
             id = id,
@@ -314,15 +331,13 @@ fun CarLauncher() {
     val hidden by CarSettings.hiddenApps.collectAsState()
     val tiles = launcherOrder(all, showVehicleData, appOrder, hidden).map(::tileOf)
 
-    // With the knob, the first move on this screen lands on the app opened last rather than on
-    // the first button anywhere on screen (issue #74). After that the knob moves as usual, out to
-    // the nav bar and back; nudging up or down already jumps a row.
     val gridState = rememberLazyGridState()
     val scope = rememberCoroutineScope()
     val lastFocus = remember { FocusRequester() }
     val lastId = remember { AppSettings.getString(context, KEY_LAST_APP, "") }
     val lastIndex = tiles.indexOfFirst { it.id == lastId }.coerceAtLeast(0)
     val focusIndex by rememberUpdatedState(lastIndex)
+
     DisposableEffect(Unit) {
         var used = false
         val taker = CarKeys.KnobTaker { event ->
@@ -341,27 +356,24 @@ fun CarLauncher() {
         onDispose { if (CarKeys.knobTaker === taker) CarKeys.knobTaker = null }
     }
 
-    LazyVerticalGrid(
-        columns = GridCells.Adaptive(minSize = 108.dp),
-        state = gridState,
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(20.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        itemsIndexed(tiles) { i, tile -> AppTile(tile, if (i == lastIndex) Modifier.focusRequester(lastFocus) else Modifier) }
+    Box(Modifier.fillMaxSize()) {
+        CarPlayWallpaper()
+        LazyVerticalGrid(
+            columns = GridCells.Adaptive(minSize = 112.dp),
+            state = gridState,
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(start = 88.dp, end = 24.dp, top = 18.dp, bottom = 18.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            itemsIndexed(tiles) { i, tile ->
+                AppTile(tile, if (i == lastIndex) Modifier.focusRequester(lastFocus) else Modifier)
+            }
+        }
     }
 }
 
-/** A red disc with a white X: marks a tile known not to work with Gearslip yet. */
-/**
- * Whether [entry] gets the red X, in the car and in the phone's app list alike. Only apps that
- * don't work get one, and a patched copy that does (Waze through Morphe) never does, since
- * [KnownApps.isBroken] knows it by its signer. The X rates an app's own car screens; a messenger
- * shown on Gearslip's own Messages screen has none, so it gets one only when it's one of
- * Google's apps, which never work (Google Maps lists itself only as a messenger).
- */
-internal fun markedBroken(context: android.content.Context, entry: Entry): Boolean {
+internal fun markedBroken(context: Context, entry: Entry): Boolean {
     val pkg = entry.packageName ?: return false
     if (entry.messaging != null) return KnownApps.brokenAsMessenger(context, pkg)
     return KnownApps.isBroken(context, pkg) || (entry.template != null && KnownApps.screenBroken(pkg))
@@ -373,43 +385,71 @@ internal fun BrokenBadge(size: androidx.compose.ui.unit.Dp, modifier: Modifier =
         modifier.size(size).background(Color(0xFFD32F2F), CircleShape),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.launcher_broken), tint = Color.White, modifier = Modifier.size(size * 0.66f))
+        Icon(
+            Icons.Filled.Close,
+            contentDescription = stringResource(R.string.launcher_broken),
+            tint = Color.White,
+            modifier = Modifier.size(size * 0.66f),
+        )
     }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun AppTile(tile: Tile, modifier: Modifier = Modifier) {
-    val shape = MaterialTheme.shapes.extraLarge
-    // A long press opens the app's menu (pin, close) - the same gesture everywhere apps are
-    // shown, here and on the nav bar. GsIconBox marks it in the theme's style.
-    GsIconBox(
-        onClick = tile.onClick,
-        onLongClick = tile.onLongClick,
-        modifier = modifier.height(120.dp),
-        colors = GsColors(MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.colorScheme.onSurfaceVariant),
-        shape = shape,
+    val squircle = RoundedCornerShape(18.dp)
+    Box(
+        modifier = modifier
+            .height(118.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .then(
+                if (tile.onLongClick != null) {
+                    Modifier.background(Color.Black.copy(alpha = 0.16f))
+                } else {
+                    Modifier
+                }
+            ),
+        contentAlignment = Alignment.Center,
     ) {
-        Box(Modifier.fillMaxSize()) {
+        GsIconBox(
+            onClick = tile.onClick,
+            onLongClick = tile.onLongClick,
+            modifier = Modifier.fillMaxSize(),
+            colors = GsColors(Color.Transparent, Color.White),
+            shape = RoundedCornerShape(16.dp),
+        ) {
             Column(
-                Modifier.fillMaxSize().padding(8.dp),
+                Modifier.fillMaxSize().padding(horizontal = 6.dp, vertical = 6.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center,
             ) {
-                Box {
+                Box(
+                    modifier = Modifier
+                        .size(64.dp)
+                        .clip(squircle)
+                        .background(Color.White.copy(alpha = 0.16f)),
+                    contentAlignment = Alignment.Center,
+                ) {
                     TileIcon(tile)
                     if (tile.broken) {
-                        // Pinned to the icon's lower corner, ringed in the tile's colour so it
-                        // reads as sitting on top of the icon.
                         BrokenBadge(
                             22.dp,
-                            Modifier.align(Alignment.BottomEnd).offset(x = 6.dp, y = 4.dp)
-                                .border(2.dp, MaterialTheme.colorScheme.surfaceVariant, CircleShape),
+                            Modifier
+                                .align(Alignment.BottomEnd)
+                                .offset(x = (-2).dp, y = (-2).dp)
+                                .border(2.dp, Color(0xFF141824), CircleShape),
                         )
                     }
                 }
-                Spacer(Modifier.height(8.dp))
-                TileLabel(tile)
+                Spacer(Modifier.height(6.dp))
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(Color.Black.copy(alpha = 0.34f))
+                        .padding(horizontal = 6.dp, vertical = 2.dp),
+                ) {
+                    TileLabel(tile)
+                }
             }
         }
     }
@@ -418,17 +458,27 @@ private fun AppTile(tile: Tile, modifier: Modifier = Modifier) {
 @Composable
 private fun TileIcon(tile: Tile) {
     when {
-        tile.icon != null -> Image(tile.icon, contentDescription = null, modifier = Modifier.size(52.dp))
-        tile.glyph != null -> Icon(tile.glyph, contentDescription = null, modifier = Modifier.size(52.dp))
+        tile.icon != null -> Image(
+            tile.icon,
+            contentDescription = null,
+            modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(18.dp)),
+        )
+        tile.glyph != null -> Icon(
+            tile.glyph,
+            contentDescription = null,
+            tint = Color.White,
+            modifier = Modifier.size(36.dp),
+        )
     }
 }
 
 @Composable
-private fun TileLabel(tile: Tile, maxLines: Int = 2, modifier: Modifier = Modifier) {
+private fun TileLabel(tile: Tile, maxLines: Int = 1, modifier: Modifier = Modifier) {
     Text(
         tile.label,
         modifier = modifier,
-        style = MaterialTheme.typography.labelLarge,
+        style = MaterialTheme.typography.labelMedium,
+        color = Color.White,
         fontWeight = FontWeight.SemiBold,
         textAlign = TextAlign.Center,
         maxLines = maxLines,
@@ -436,5 +486,4 @@ private fun TileLabel(tile: Tile, maxLines: Int = 2, modifier: Modifier = Modifi
     )
 }
 
-/** The app opened from the launcher last, where the knob starts on the Apps screen. */
 private const val KEY_LAST_APP = "car_last_app"
