@@ -203,6 +203,7 @@ fun CarUi() {
                 // Zero bottom inset so there is no white strip at the bottom
                 val homeInset = 0.dp
                 val fullscreen = CarFullscreen.active && screen != CarScreen.Home
+                val floatingHomeVisible = !barShown && !keyboardVisible && (!fullscreen || CarFullscreen.revealed)
 
                 Box(Modifier.fillMaxSize().padding(pad)) {
                 Column(Modifier.fillMaxSize()) {
@@ -285,9 +286,9 @@ fun CarUi() {
                             CarNavBar(navigator)
                         }
 
-                        // Subtle floating Home pill when inside an app so the driver can return anytime
+                        // Subtle floating Home pill when inside an app; auto-hides during fullscreen video
                         AnimatedVisibility(
-                            visible = !barShown && !keyboardVisible,
+                            visible = floatingHomeVisible,
                             modifier = Modifier.align(Alignment.BottomStart).padding(start = 12.dp, bottom = 12.dp),
                             enter = slideInHorizontally(tween(200)) { -it },
                             exit = slideOutHorizontally(tween(180)) { -it },

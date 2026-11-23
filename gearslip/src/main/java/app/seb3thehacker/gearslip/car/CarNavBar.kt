@@ -1,6 +1,11 @@
 package app.seb3thehacker.gearslip.car
 
+import android.content.Context
+import android.content.Intent
 import android.media.session.PlaybackState
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
+import android.provider.Settings
 import androidx.car.app.model.CarIcon
 import androidx.car.app.navigation.model.NavigationTemplate
 import androidx.car.app.navigation.model.RoutingInfo
@@ -29,6 +34,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -75,6 +82,37 @@ import kotlinx.coroutines.delay
 import java.text.DateFormat
 import java.util.Date
 
+private enum class NetworkKind { WIFI, MOBILE_DATA, OFFLINE }
+
+private fun currentNetworkKind(context: Context): NetworkKind {
+    val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return NetworkKind.OFFLINE
+    val active = cm.activeNetwork ?: return NetworkKind.OFFLINE
+    val caps = cm.getNetworkCapabilities(active) ?: return NetworkKind.OFFLINE
+    return when {
+        caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> NetworkKind.WIFI
+        caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> NetworkKind.MOBILE_DATA
+        caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) -> NetworkKind.MOBILE_DATA
+        else -> NetworkKind.OFFLINE
+    }
+}
+
+private fun openMobileDataOrNetworkSettings(context: Context) {
+    val candidates = listOf(
+        Intent(Settings.ACTION_DATA_ROAMING_SETTINGS),
+        Intent(Settings.ACTION_NETWORK_OPERATOR_SETTINGS),
+        Intent(Settings.ACTION_WIRELESS_SETTINGS),
+        Intent(Settings.ACTION_SETTINGS),
+    )
+    for (intent in candidates) {
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        val ok = runCatching {
+            context.startActivity(intent)
+            true
+        }.getOrDefault(false)
+        if (ok) return
+    }
+}
+
 @Composable
 private fun BreadcrumbBar(navigator: CarNavigator) {
     val trail = navigator.trail
@@ -119,10 +157,11 @@ private fun BreadcrumbBar(navigator: CarNavigator) {
 
 /**
  * Left-side CarPlay-style vertical light frosted glass sidebar: clock & battery/weather at top,
- * default + user-pinned app shortcuts in the middle, and Home/Apps toggle at bottom.
+ * default + user-pinned app shortcuts in the middle, and network/data + Home/Apps toggle at bottom.
  */
 @Composable
 internal fun CarNavBar(navigator: CarNavigator, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
     val battery by CarEnvironment.battery.collectAsState()
     val now by rememberNow()
     val weather by Weather.state.collectAsState()
@@ -234,11 +273,12 @@ internal fun CarNavBar(navigator: CarNavigator, modifier: Modifier = Modifier) {
                 }
             }
 
-            // Bottom: Home / Apps smooth toggle + Assistant
+            // Bottom: Network/Data status + Home / Apps toggle + Assistant
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
+                NavNetworkDataIcon(context)
                 if (navMic) {
                     NavAssistantIcon()
                 }
@@ -255,6 +295,49 @@ internal fun CarNavBar(navigator: CarNavigator, modifier: Modifier = Modifier) {
         }
     }
 }
+
+@Composable
+private fun NavNetworkDataIcon(context: Context) {
+    val netKind by produceState(initialValue = currentNetworkKind(context), context) {
+        while (true) {
+            value = currentNetworkKind(context)
+            delay(2_000L)
+        }
+    }
+    val (bgColor, iconTint, badgeText, glyph) = when (netKind) {
+        NetworkKind.WIFI -> Quad(Color(0xFF0091EA).copy(alpha = 0.22f), Color(0xFF0077C2), "WiFi", Icons.Filled.Share)
+        NetworkKind.MOBILE_DATA -> Quad(Color(0xFF00C853).copy(alpha = 0.22f), Color(0xFF008E3B), "Data", Icons.Filled.Refresh)
+        NetworkKind.OFFLINE -> Quad(Color(0xFFFF3B30).copy(alpha = 0.20f), Color(0xFFD32F2F), "Off", Icons.Filled.Refresh)
+    }
+
+    GsIconBox(
+        onClick = { openMobileDataOrNetworkSettings(context) },
+        modifier = Modifier.size(46.dp),
+        colors = GsColors(bgColor, iconTint),
+        shape = RoundedCornerShape(13.dp),
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Icon(
+                imageVector = glyph,
+                contentDescription = "Network & Data",
+                tint = iconTint,
+                modifier = Modifier.size(18.dp),
+            )
+            Text(
+                badgeText,
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Bold,
+                color = iconTint,
+                maxLines = 1,
+            )
+        }
+    }
+}
+
+private data class Quad<A, B, C, D>(val first: A, val second: B, val third: C, val fourth: D)
 
 private val CARPLAY_SIDEBAR_WIDTH = 84.dp
 private val NAV_ITEM_PADDING = 7.dp
@@ -326,7 +409,14 @@ private fun NavAppIcon(
                 Image(it, entry.label, Modifier.size(34.dp).clip(RoundedCornerShape(9.dp)))
             }
             entry.builtIn?.let {
-                Icon(it.glyph, entry.shownLabel(), Modifier.size(26.dp), tint = Color(0xFF141722))
+                ColorfulBuiltInIcon(
+                    idOrLabel = it.id.ifBlank { entry.label },
+                    icon = it.glyph,
+                    contentDescription = entry.shownLabel(),
+                    boxSize = 34.dp,
+                    iconSize = 20.dp,
+                    cornerRadius = 9.dp,
+                )
             }
             if (open) {
                 Box(

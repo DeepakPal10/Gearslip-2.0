@@ -74,11 +74,12 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/** One tile on the launcher: either a phone app's own icon or a built-in glyph. */
+/** One tile on the launcher: either a phone app's own icon or a colorful built-in badge. */
 private class Tile(
     val label: String,
     val icon: ImageBitmap? = null,
     val glyph: ImageVector? = null,
+    val accentId: String? = null,
     val broken: Boolean = false,
     val onLongClick: (() -> Unit)? = null,
     val id: String? = null,
@@ -93,17 +94,20 @@ internal class Entry(
     val media: MediaApp? = null,
     val builtIn: BuiltInApp? = null,
     val messaging: MessagingApp? = null,
+    val customPackage: String? = null,
 ) {
     val componentId: String?
         get() = builtIn?.let { BUILT_IN_PREFIX + it.id }
             ?: messaging?.let { MESSAGING_PREFIX + it.packageName }
+            ?: customPackage?.let { CUSTOM_APP_PREFIX + it }
             ?: (template?.component ?: media?.component)?.flattenToString()
 
     val packageName: String?
-        get() = template?.component?.packageName ?: media?.component?.packageName ?: messaging?.packageName
+        get() = customPackage ?: template?.component?.packageName ?: media?.component?.packageName ?: messaging?.packageName
 }
 
 internal const val MESSAGING_PREFIX = "messages:"
+internal const val CUSTOM_APP_PREFIX = "custom:"
 
 internal object LauncherCache {
     private val flow = MutableStateFlow<List<Entry>?>(null)
@@ -164,6 +168,20 @@ private fun tilesFor(
     }
 }
 
+private fun customEntriesFor(context: Context, existingPackages: Set<String>): List<Entry> {
+    val selected = getSelectedCustomCarApps(context)
+    if (selected.isEmpty()) return emptyList()
+    val pm = context.packageManager
+    return selected
+        .filter { it !in existingPackages }
+        .mapNotNull { pkg ->
+            val appInfo = runCatching { pm.getApplicationInfo(pkg, 0) }.getOrNull() ?: return@mapNotNull null
+            val label = runCatching { pm.getApplicationLabel(appInfo).toString().trim() }.getOrDefault(pkg).ifEmpty { pkg }
+            val icon = runCatching { pm.getApplicationIcon(appInfo).toBitmap(128, 128).asImageBitmap() }.getOrNull()
+            Entry(label = label, icon = icon, customPackage = pkg)
+        }
+}
+
 @Composable
 internal fun rememberAllEntries(): List<Entry> {
     val context = LocalContext.current
@@ -173,7 +191,9 @@ internal fun rememberAllEntries(): List<Entry> {
         if (LauncherCache.entries == null) withContext(Dispatchers.IO) { LauncherCache.load(context) }
     }
     return remember(installed, launcher) {
-        BuiltInApps.entries(launcher, LauncherMode.canCall(context)) + installed.orEmpty()
+        val base = BuiltInApps.entries(launcher, LauncherMode.canCall(context)) + installed.orEmpty()
+        val existingPkgs = base.mapNotNull { it.packageName }.toSet()
+        base + customEntriesFor(context, existingPkgs)
     }
 }
 
@@ -189,6 +209,7 @@ private fun groupOf(entry: Entry, mediaPackages: Set<String>): AppGroup {
             else -> AppGroup.SETTINGS
         }
     }
+    if (entry.customPackage != null) return AppGroup.OTHER
     if (entry.media != null) return AppGroup.MUSIC
     if (entry.messaging != null) return AppGroup.MESSAGING
     val app = entry.template ?: return AppGroup.OTHER
@@ -222,6 +243,10 @@ internal fun findEntry(id: String): Entry? =
 fun warmLauncherApps(context: Context) { LauncherCache.load(context, force = true) }
 
 internal fun launchEntry(entry: Entry, navigator: CarNavigator, frame: CarEnvironment.Frame) {
+    entry.customPackage?.let { pkg ->
+        launchCustomCarApp(CarEnvironment.appContext ?: return, pkg)
+        return
+    }
     entry.builtIn?.let { it.open(navigator); return }
     entry.template?.let {
         if (it.isNavigation) {
@@ -247,18 +272,17 @@ internal fun CarPlayWallpaper(modifier: Modifier = Modifier) {
             modifier = Modifier
                 .fillMaxSize()
                 .scale(1.08f)
-                .blur(26.dp),
+                .blur(22.dp),
         )
-        // Airy light frosted sheen so colors stay bright and vibrant, never dark
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(
                     Brush.verticalGradient(
                         colors = listOf(
-                            Color.White.copy(alpha = 0.14f),
-                            Color.White.copy(alpha = 0.08f),
-                            Color.White.copy(alpha = 0.18f),
+                            Color.Black.copy(alpha = 0.06f),
+                            Color.Black.copy(alpha = 0.09f),
+                            Color.Black.copy(alpha = 0.12f)
                         )
                     )
                 )
@@ -279,15 +303,20 @@ fun CarLauncher() {
     fun tileOf(entry: Entry): Tile {
         val id = entry.componentId
         return Tile(
-            entry.builtIn?.let { context.getString(it.labelRes) } ?: entry.label,
-            entry.icon,
-            entry.builtIn?.glyph,
+            label = entry.builtIn?.let { context.getString(it.labelRes) } ?: entry.label,
+            icon = entry.icon,
+            glyph = entry.builtIn?.glyph,
+            accentId = entry.builtIn?.id ?: entry.label,
             broken = markedBroken(context, entry),
             onLongClick = id?.let { { navigator.showAppMenu(it) } },
             id = id,
         ) {
             id?.let { AppSettings.putString(context, KEY_LAST_APP, it) }
-            openApp(entry, id?.let { running[it] }, navigator, frame)
+            if (entry.customPackage != null) {
+                launchCustomCarApp(context, entry.customPackage)
+            } else {
+                openApp(entry, id?.let { running[it] }, navigator, frame)
+            }
         }
     }
 
@@ -385,8 +414,7 @@ private fun AppTile(tile: Tile, modifier: Modifier = Modifier) {
                 Box(
                     modifier = Modifier
                         .size(64.dp)
-                        .clip(squircle)
-                        .background(Color.White.copy(alpha = 0.28f)),
+                        .clip(squircle),
                     contentAlignment = Alignment.Center,
                 ) {
                     TileIcon(tile)
@@ -422,11 +450,13 @@ private fun TileIcon(tile: Tile) {
             contentDescription = null,
             modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(18.dp)),
         )
-        tile.glyph != null -> Icon(
-            tile.glyph,
+        tile.glyph != null -> ColorfulBuiltInIcon(
+            idOrLabel = tile.accentId ?: tile.label,
+            icon = tile.glyph,
             contentDescription = null,
-            tint = Color(0xFF1C1E26),
-            modifier = Modifier.size(36.dp),
+            boxSize = 64.dp,
+            iconSize = 34.dp,
+            cornerRadius = 18.dp,
         )
     }
 }
