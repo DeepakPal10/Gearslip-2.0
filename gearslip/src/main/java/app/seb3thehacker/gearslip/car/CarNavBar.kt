@@ -8,10 +8,10 @@ import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -19,7 +19,6 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -98,7 +97,7 @@ private fun BreadcrumbBar(navigator: CarNavigator) {
                 crumb.shown(),
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = if (isLast) FontWeight.SemiBold else FontWeight.Normal,
-                color = if (isLast) Color.White else Color.White.copy(alpha = 0.7f),
+                color = if (isLast) Color(0xFF141722) else Color(0xFF141722).copy(alpha = 0.7f),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = if (isLast) Modifier else Modifier
@@ -110,7 +109,7 @@ private fun BreadcrumbBar(navigator: CarNavigator) {
                 Text(
                     "›",
                     style = MaterialTheme.typography.labelLarge,
-                    color = Color.White.copy(alpha = 0.6f),
+                    color = Color(0xFF141722).copy(alpha = 0.6f),
                     modifier = Modifier.padding(horizontal = 2.dp),
                 )
             }
@@ -119,8 +118,8 @@ private fun BreadcrumbBar(navigator: CarNavigator) {
 }
 
 /**
- * Left-side CarPlay-style vertical sidebar: clock & battery/weather at top, recent/pinned app
- * shortcuts in the middle, and Home/Apps/Assistant/Dashboard controls at bottom.
+ * Left-side CarPlay-style vertical light frosted glass sidebar: clock & battery/weather at top,
+ * default + user-pinned app shortcuts in the middle, and Home/Apps toggle at bottom.
  */
 @Composable
 internal fun CarNavBar(navigator: CarNavigator, modifier: Modifier = Modifier) {
@@ -131,24 +130,39 @@ internal fun CarNavBar(navigator: CarNavigator, modifier: Modifier = Modifier) {
 
     val pinnedIds by CarSettings.pinnedApps.collectAsState()
     val entries = rememberAllEntries()
-    val pinnedEntries = remember(entries, pinnedIds) {
-        pinnedIds.mapNotNull { id -> entries.find { it.componentId == id } }
+    val defaultPins = remember(entries) {
+        buildList {
+            entries.firstOrNull { it.template?.isNavigation == true }?.let(::add)
+            entries.firstOrNull { it.media != null }?.let(::add)
+            entries.firstOrNull { it.builtIn === BuiltInApps.Web || it.builtIn === BuiltInApps.Phone }?.let(::add)
+        }
+    }
+    val pinnedEntries = remember(entries, pinnedIds, defaultPins) {
+        if (pinnedIds.isNotEmpty()) {
+            pinnedIds.mapNotNull { id -> entries.find { it.componentId == id } }
+        } else {
+            defaultPins
+        }
     }
     val frame by CarEnvironment.frame.collectAsState()
     val running = rememberRunningApps()
     val navMic by CarSettings.navMic.collectAsState()
     val unread by CarNotifications.unread.collectAsState()
 
+    val effectivePinIds = remember(pinnedEntries) { pinnedEntries.mapNotNull { it.componentId }.toSet() }
     val runningEntries = running.keys
-        .filter { it !in pinnedIds && running[it] != RunningSlot.NAV }
+        .filter { it !in effectivePinIds && running[it] != RunningSlot.NAV }
         .mapNotNull { id -> entries.find { it.componentId == id } }
     val shownPins = pinnedEntries.filter { running[it.componentId] != RunningSlot.NAV }
     val dockApps = (shownPins + runningEntries).take(3)
 
     Surface(
-        modifier = modifier.width(CARPLAY_SIDEBAR_WIDTH).fillMaxHeight(),
-        color = Color(0xCC121726),
-        contentColor = Color.White,
+        modifier = modifier
+            .width(CARPLAY_SIDEBAR_WIDTH)
+            .fillMaxHeight()
+            .border(width = 1.dp, color = Color.White.copy(alpha = 0.45f)),
+        color = Color.White.copy(alpha = 0.68f),
+        contentColor = Color(0xFF141722),
     ) {
         Column(
             Modifier.fillMaxSize().padding(vertical = 10.dp, horizontal = 8.dp),
@@ -178,7 +192,7 @@ internal fun CarNavBar(navigator: CarNavigator, modifier: Modifier = Modifier) {
                         DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(now)).replace(" AM", "").replace(" PM", ""),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
-                        color = Color.White,
+                        color = Color(0xFF141722),
                         maxLines = 1,
                     )
                     Row(
@@ -189,18 +203,20 @@ internal fun CarNavBar(navigator: CarNavigator, modifier: Modifier = Modifier) {
                             Text(
                                 "${battery.percent}%",
                                 style = MaterialTheme.typography.labelSmall,
-                                color = Color.White.copy(alpha = 0.78f),
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color(0xFF141722).copy(alpha = 0.78f),
                                 maxLines = 1,
                             )
                             if (battery.charging) {
-                                ChargingGlyph(Modifier.size(11.dp), tint = Color(0xFF34C759))
+                                ChargingGlyph(Modifier.size(11.dp), tint = Color(0xFF1E9E47))
                             }
                         }
                         weatherData?.let { w ->
                             Text(
                                 "${w.temp}°",
                                 style = MaterialTheme.typography.labelSmall,
-                                color = Color.White.copy(alpha = 0.78f),
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color(0xFF141722).copy(alpha = 0.78f),
                                 maxLines = 1,
                             )
                         }
@@ -208,7 +224,7 @@ internal fun CarNavBar(navigator: CarNavigator, modifier: Modifier = Modifier) {
                 }
             }
 
-            // Middle: Up to 3 recent / pinned app shortcuts (CarPlay dock style)
+            // Middle: Up to 3 pinned / recent app shortcuts (CarPlay dock style)
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -218,7 +234,7 @@ internal fun CarNavBar(navigator: CarNavigator, modifier: Modifier = Modifier) {
                 }
             }
 
-            // Bottom: Home / Grid + Assistant + Dashboard controls
+            // Bottom: Home / Apps smooth toggle + Assistant
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -229,7 +245,10 @@ internal fun CarNavBar(navigator: CarNavigator, modifier: Modifier = Modifier) {
                 NavItem(
                     icon = MediaIcons.Apps,
                     selected = navigator.current == CarScreen.Apps,
-                    onClick = { navigator.apps() },
+                    onClick = {
+                        if (navigator.current == CarScreen.Apps) navigator.home()
+                        else navigator.apps()
+                    },
                 )
                 NavHomeButton(navigator, entries, running)
             }
@@ -293,11 +312,11 @@ private fun NavAppIcon(
     onLongClick: () -> Unit,
     onClick: () -> Unit,
 ) {
-    val highlight = if (showing) Color.White.copy(alpha = 0.24f) else Color.White.copy(alpha = 0.10f)
+    val highlight = if (showing) Color.White.copy(alpha = 0.85f) else Color.White.copy(alpha = 0.45f)
     GsIconBox(
         onClick,
         Modifier.size(48.dp),
-        colors = GsColors(highlight, Color.White),
+        colors = GsColors(highlight, Color(0xFF141722)),
         latched = showing,
         shape = RoundedCornerShape(13.dp),
         onLongClick = onLongClick,
@@ -307,7 +326,7 @@ private fun NavAppIcon(
                 Image(it, entry.label, Modifier.size(34.dp).clip(RoundedCornerShape(9.dp)))
             }
             entry.builtIn?.let {
-                Icon(it.glyph, entry.shownLabel(), Modifier.size(26.dp), tint = Color.White)
+                Icon(it.glyph, entry.shownLabel(), Modifier.size(26.dp), tint = Color(0xFF141722))
             }
             if (open) {
                 Box(
@@ -316,7 +335,7 @@ private fun NavAppIcon(
                         .padding(bottom = 3.dp)
                         .size(width = 14.dp, height = 3.dp)
                         .clip(RoundedCornerShape(50))
-                        .background(Color(0xFF0A84FF)),
+                        .background(Color(0xFF007AFF)),
                 )
             }
         }
@@ -325,8 +344,8 @@ private fun NavAppIcon(
 
 @Composable
 private fun navColors(selected: Boolean): GsColors {
-    return if (selected) GsColors(Color(0xFF0A84FF), Color.White)
-    else GsColors(Color.White.copy(alpha = 0.12f), Color.White)
+    return if (selected) GsColors(Color(0xFF007AFF), Color.White)
+    else GsColors(Color.White.copy(alpha = 0.45f), Color(0xFF141722))
 }
 
 @Composable
@@ -651,7 +670,7 @@ private fun DockedPill(
 }
 
 @Composable
-private fun ChargingGlyph(modifier: Modifier = Modifier, tint: Color = Color.White.copy(alpha = 0.78f)) {
+private fun ChargingGlyph(modifier: Modifier = Modifier, tint: Color = Color(0xFF141722).copy(alpha = 0.78f)) {
     Canvas(modifier) {
         val w = size.width
         val h = size.height

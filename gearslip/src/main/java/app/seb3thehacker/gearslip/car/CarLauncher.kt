@@ -1,7 +1,6 @@
 package app.seb3thehacker.gearslip.car
 
 import android.content.Context
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -17,7 +16,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid 
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.CircleShape
@@ -38,17 +37,19 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -235,69 +236,32 @@ internal fun launchEntry(entry: Entry, navigator: CarNavigator, frame: CarEnviro
     entry.messaging?.let { navigator.messages(it.packageName, it.label) }
 }
 
-/** Apple CarPlay-style wave wallpaper rendered smoothly via Canvas. */
+/** Bright Apple CarPlay-style wallpaper with soft blur and airy light glass glow. */
 @Composable
 internal fun CarPlayWallpaper(modifier: Modifier = Modifier) {
-    Canvas(modifier = modifier.fillMaxSize()) {
-        val w = size.width
-        val h = size.height
-
-        // Deep midnight navy-indigo base
-        drawRect(
-            brush = Brush.linearGradient(
-                colors = listOf(Color(0xFF0A142D), Color(0xFF10224C), Color(0xFF0B1328)),
-                start = Offset(0f, 0f),
-                end = Offset(w, h),
-            )
+    Box(modifier = modifier.fillMaxSize()) {
+        Image(
+            painter = painterResource(id = R.drawable.carplay_wallpaper),
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .fillMaxSize()
+                .scale(1.08f)
+                .blur(26.dp),
         )
-
-        // Warm amber / gold wave sweep on upper-mid right
-        val goldWave = Path().apply {
-            moveTo(w * 0.22f, 0f)
-            cubicTo(w * 0.45f, h * 0.35f, w * 0.72f, h * 0.15f, w * 0.92f, h * 0.58f)
-            lineTo(w, h * 0.58f)
-            lineTo(w, 0f)
-            close()
-        }
-        drawPath(
-            path = goldWave,
-            brush = Brush.radialGradient(
-                colors = listOf(Color(0xFFE69F1E).copy(alpha = 0.88f), Color(0xFFD96B27).copy(alpha = 0.25f), Color.Transparent),
-                center = Offset(w * 0.62f, h * 0.26f),
-                radius = w * 0.45f,
-            )
-        )
-
-        // Violet / magenta wave curve
-        val violetWave = Path().apply {
-            moveTo(w * 0.32f, h)
-            cubicTo(w * 0.42f, h * 0.45f, w * 0.78f, h * 0.48f, w, h * 0.22f)
-            lineTo(w, h)
-            close()
-        }
-        drawPath(
-            path = violetWave,
-            brush = Brush.linearGradient(
-                colors = listOf(Color(0xFF6A24B8).copy(alpha = 0.85f), Color(0xFF2848B8).copy(alpha = 0.65f)),
-                start = Offset(w * 0.45f, h * 0.45f),
-                end = Offset(w, h),
-            )
-        )
-
-        // Emerald / teal wave along lower-left
-        val greenWave = Path().apply {
-            moveTo(0f, h * 0.42f)
-            cubicTo(w * 0.25f, h * 0.48f, w * 0.36f, h * 0.78f, w * 0.62f, h)
-            lineTo(0f, h)
-            close()
-        }
-        drawPath(
-            path = greenWave,
-            brush = Brush.linearGradient(
-                colors = listOf(Color(0xFF1F7A5C).copy(alpha = 0.85f), Color(0xFF14426E).copy(alpha = 0.55f)),
-                start = Offset(0f, h * 0.45f),
-                end = Offset(w * 0.55f, h),
-            )
+        // Airy light frosted sheen so colors stay bright and vibrant, never dark
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            Color.White.copy(alpha = 0.14f),
+                            Color.White.copy(alpha = 0.08f),
+                            Color.White.copy(alpha = 0.18f),
+                        )
+                    )
+                )
         )
     }
 }
@@ -362,7 +326,7 @@ fun CarLauncher() {
             columns = GridCells.Adaptive(minSize = 112.dp),
             state = gridState,
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(start = 88.dp, end = 24.dp, top = 18.dp, bottom = 18.dp),
+            contentPadding = PaddingValues(start = 94.dp, end = 24.dp, top = 20.dp, bottom = 20.dp),
             horizontalArrangement = Arrangement.spacedBy(16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
@@ -401,14 +365,9 @@ private fun AppTile(tile: Tile, modifier: Modifier = Modifier) {
     Box(
         modifier = modifier
             .height(118.dp)
-            .clip(RoundedCornerShape(16.dp))
-            .then(
-                if (tile.onLongClick != null) {
-                    Modifier.background(Color.Black.copy(alpha = 0.16f))
-                } else {
-                    Modifier
-                }
-            ),
+            .clip(RoundedCornerShape(18.dp))
+            .background(Color.White.copy(alpha = 0.22f))
+            .border(1.dp, Color.White.copy(alpha = 0.35f), RoundedCornerShape(18.dp)),
         contentAlignment = Alignment.Center,
     ) {
         GsIconBox(
@@ -416,7 +375,7 @@ private fun AppTile(tile: Tile, modifier: Modifier = Modifier) {
             onLongClick = tile.onLongClick,
             modifier = Modifier.fillMaxSize(),
             colors = GsColors(Color.Transparent, Color.White),
-            shape = RoundedCornerShape(16.dp),
+            shape = RoundedCornerShape(18.dp),
         ) {
             Column(
                 Modifier.fillMaxSize().padding(horizontal = 6.dp, vertical = 6.dp),
@@ -427,7 +386,7 @@ private fun AppTile(tile: Tile, modifier: Modifier = Modifier) {
                     modifier = Modifier
                         .size(64.dp)
                         .clip(squircle)
-                        .background(Color.White.copy(alpha = 0.16f)),
+                        .background(Color.White.copy(alpha = 0.28f)),
                     contentAlignment = Alignment.Center,
                 ) {
                     TileIcon(tile)
@@ -437,16 +396,16 @@ private fun AppTile(tile: Tile, modifier: Modifier = Modifier) {
                             Modifier
                                 .align(Alignment.BottomEnd)
                                 .offset(x = (-2).dp, y = (-2).dp)
-                                .border(2.dp, Color(0xFF141824), CircleShape),
+                                .border(2.dp, Color.White, CircleShape),
                         )
                     }
                 }
                 Spacer(Modifier.height(6.dp))
                 Box(
                     modifier = Modifier
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(Color.Black.copy(alpha = 0.34f))
-                        .padding(horizontal = 6.dp, vertical = 2.dp),
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color.White.copy(alpha = 0.72f))
+                        .padding(horizontal = 8.dp, vertical = 2.dp),
                 ) {
                     TileLabel(tile)
                 }
@@ -466,7 +425,7 @@ private fun TileIcon(tile: Tile) {
         tile.glyph != null -> Icon(
             tile.glyph,
             contentDescription = null,
-            tint = Color.White,
+            tint = Color(0xFF1C1E26),
             modifier = Modifier.size(36.dp),
         )
     }
@@ -478,7 +437,7 @@ private fun TileLabel(tile: Tile, maxLines: Int = 1, modifier: Modifier = Modifi
         tile.label,
         modifier = modifier,
         style = MaterialTheme.typography.labelMedium,
-        color = Color.White,
+        color = Color(0xFF161820),
         fontWeight = FontWeight.SemiBold,
         textAlign = TextAlign.Center,
         maxLines = maxLines,
