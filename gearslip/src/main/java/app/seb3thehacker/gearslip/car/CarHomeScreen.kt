@@ -9,7 +9,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -52,6 +51,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.seb3thehacker.gearslip.R
+import app.seb3thehacker.gearslip.car.theme.GsButton
 import app.seb3thehacker.gearslip.car.theme.GsIconButton
 import app.seb3thehacker.gearslip.car.theme.GsTone
 import app.seb3thehacker.gearslip.car.theme.gsPanelShadow
