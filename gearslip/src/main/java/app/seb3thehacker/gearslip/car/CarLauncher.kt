@@ -243,3 +243,251 @@ private fun groupOf(entry: Entry, mediaPackages: Set<String>): AppGroup {
     entry.builtIn?.let {
         return when (it) {
             BuiltInApps.Phone -> AppGroup.PHONE
+            BuiltInApps.Web -> AppGroup.WEB
+            BuiltInApps.ScreenSharing -> AppGroup.SCREEN_SHARING
+            BuiltInApps.Exit -> AppGroup.EXIT
+            else -> AppGroup.SETTINGS
+        }
+    }
+    if (isChromeEntry(entry) || entry.pinnedUrl != null) return AppGroup.WEB
+    if (entry.customPackage != null) return AppGroup.OTHER
+    if (entry.media != null) return AppGroup.MUSIC
+    if (entry.messaging != null) return AppGroup.MESSAGING
+    val app = entry.template ?: return AppGroup.OTHER
+    if (app.component.packageName in mediaPackages) return AppGroup.MUSIC
+    return when (app.kind) {
+        "calling" -> AppGroup.PHONE
+        "navigation", "poi", "parking", "charging" -> AppGroup.MAPS
+        "media" -> AppGroup.MUSIC
+        "messaging" -> AppGroup.MESSAGING
+        "settings" -> AppGroup.SETTINGS
+        else -> AppGroup.OTHER
+    }
+}
+
+internal fun launcherOrder(all: List<Entry>, showVehicleData: Boolean, custom: List<String>, hidden: Set<String>): List<Entry> {
+    val shown = all.filter { entry ->
+        (entry.builtIn !== BuiltInApps.VehicleData || showVehicleData) &&
+            (entry.pinnedUrl != null || entry.componentId !in hidden)
+    }
+    val mediaPackages = shown.mapNotNull { it.media?.component?.packageName }.toSet()
+    val grouped = shown.sortedWith(
+        compareBy<Entry>({ groupOf(it, mediaPackages) }, { it.builtIn === BuiltInApps.Settings }, { it.label.lowercase() }),
+    )
+    if (custom.isEmpty()) return grouped
+    val rank = custom.withIndex().associate { (i, id) -> id to i }
+    fun Entry.rank() = componentId?.let { rank[it] }
+    val moved = grouped.filter { it.rank() != null }.sortedBy { it.rank() }.iterator()
+    return grouped.map { if (it.rank() != null) moved.next() else it }
+}
+
+internal fun findEntry(id: String): Entry? =
+    BuiltInApps.everyEntry.find { it.componentId == id } ?: LauncherCache.entries?.find { it.componentId == id }
+
+fun warmLauncherApps(context: Context) {
+    LauncherCache.load(context, force = true)
+}
+
+internal fun findInstalledAaBrowserPackage(context: Context): String? {
+    val pm = context.packageManager
+    return AA_BROWSER_PACKAGES.firstOrNull { pkg ->
+        runCatching { pm.getLaunchIntentForPackage(pkg) != null }.getOrDefault(false)
+    }
+}
+
+private fun launchPackageDirectly(context: Context, packageName: String) {
+    val intent = context.packageManager.getLaunchIntentForPackage(packageName)
+    if (intent != null) {
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        context.startActivity(intent)
+    }
+}
+
+internal fun launchAaBrowser(context: Context, navigator: CarNavigator): Boolean {
+    val pkg = findInstalledAaBrowserPackage(context)
+    if (pkg != null) {
+        launchPackageDirectly(context, pkg)
+        return true
+    }
+    PinnedWebSites.openAaBrowserMode(navigator, "https://www.google.com")
+    return false
+}
+
+private fun launchCustomOrAaPackage(context: Context, packageName: String, navigator: CarNavigator) {
+    if (packageName == CHROME_ENTRY_ID) {
+        launchChromeInBuilt(navigator)
+        return
+    }
+    if (packageName in AA_BROWSER_PACKAGES) {
+        launchAaBrowser(context, navigator)
+        return
+    }
+    launchPackageDirectly(context, packageName)
+}
+
+internal fun launchEntry(entry: Entry, navigator: CarNavigator, frame: CarEnvironment.Frame) {
+    if (isChromeEntry(entry)) {
+        launchChromeInBuilt(navigator)
+        return
+    }
+    entry.builtIn?.let { it.open(navigator); return }
+    entry.pinnedUrl?.let { url ->
+        PinnedWebSites.openInBrowser(navigator, url)
+        return
+    }
+    entry.template?.let {
+        if (it.isNavigation) {
+            CarServices.connectNav(it, frame)
+            navigator.home()
+        } else {
+            CarServices.connectBrowse(it, frame)
+            navigator.browse(entry.label)
+        }
+        return
+    }
+    entry.media?.let { CarServices.openMedia(it); navigator.media(); return }
+    entry.messaging?.let { navigator.messages(it.packageName, it.label); return }
+    entry.customPackage?.let { pkg ->
+        val ctx = CarEnvironment.appContext ?: return
+        launchCustomOrAaPackage(ctx, pkg, navigator)
+    }
+}
+
+@Composable
+internal fun CarPlayWallpaper(modifier: Modifier = Modifier) {
+    Box(modifier = modifier.fillMaxSize()) {
+        Image(
+            painter = painterResource(id = R.drawable.carplay_wallpaper),
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .fillMaxSize()
+                .scale(1.08f)
+                .blur(22.dp),
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            Color.Black.copy(alpha = 0.06f),
+                            Color.Black.copy(alpha = 0.09f),
+                            Color.Black.copy(alpha = 0.12f),
+                        )
+                    )
+                )
+        )
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun CarLauncher() {
+    val context = LocalContext.current
+    val navigator = LocalCarNavigator.current
+    val frame by CarEnvironment.frame.collectAsState()
+
+    val all = rememberAllEntries()
+    val running = rememberRunningApps()
+    val showVehicleData = rememberVehicleDataShown()
+
+    fun tileOf(entry: Entry): Tile {
+        val id = entry.componentId
+        return Tile(
+            label = entry.builtIn?.let { context.getString(it.labelRes) } ?: entry.label,
+            icon = entry.icon,
+            glyph = entry.builtIn?.glyph ?: entry.fallbackGlyph,
+            accentId = entry.builtIn?.id ?: entry.label,
+            broken = markedBroken(context, entry),
+            onLongClick = id?.let { { navigator.showAppMenu(it) } },
+            id = id,
+        ) {
+            id?.let { AppSettings.putString(context, KEY_LAST_APP, it) }
+            when {
+                isChromeEntry(entry) -> launchChromeInBuilt(navigator)
+                entry.pinnedUrl != null -> PinnedWebSites.openInBrowser(navigator, entry.pinnedUrl)
+                entry.customPackage != null -> launchCustomOrAaPackage(context, entry.customPackage, navigator)
+                else -> openApp(entry, id?.let { running[it] }, navigator, frame)
+            }
+        }
+    }
+
+    val appOrder by CarSettings.appOrder.collectAsState()
+    val hidden by CarSettings.hiddenApps.collectAsState()
+    val tiles = launcherOrder(all, showVehicleData, appOrder, hidden).map(::tileOf)
+    val pages = remember(tiles) {
+        if (tiles.isEmpty()) listOf(emptyList()) else tiles.chunked(APPS_PER_PAGE)
+    }
+
+    val pagerState = rememberPagerState(pageCount = { pages.size })
+    val scope = rememberCoroutineScope()
+    val lastFocus = remember { FocusRequester() }
+    val lastId = remember { AppSettings.getString(context, KEY_LAST_APP, "") }
+    val lastTileIndex = tiles.indexOfFirst { it.id == lastId }.coerceAtLeast(0)
+    val focusIndex by rememberUpdatedState(lastTileIndex)
+
+    DisposableEffect(Unit) {
+        var used = false
+        val taker = CarKeys.KnobTaker { event ->
+            if (used || event == CarKeys.KnobEvent.Back || (event is CarKeys.KnobEvent.Key && !event.down)) {
+                return@KnobTaker false
+            }
+            used = true
+            val pageForFocus = (focusIndex / APPS_PER_PAGE).coerceIn(0, (pages.size - 1).coerceAtLeast(0))
+            scope.launch {
+                pagerState.animateScrollToPage(pageForFocus, animationSpec = tween(220))
+                withFrameNanos { }
+                runCatching { lastFocus.requestFocus() }
+            }
+            true
+        }
+        CarKeys.knobTaker = taker
+        onDispose { if (CarKeys.knobTaker === taker) CarKeys.knobTaker = null }
+    }
+
+    Box(Modifier.fillMaxSize()) {
+        CarPlayWallpaper()
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(start = 94.dp, end = 24.dp, top = 14.dp, bottom = 12.dp),
+            verticalArrangement = Arrangement.SpaceBetween,
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                pageSpacing = 18.dp,
+                beyondViewportPageCount = 1,
+                flingBehavior = PagerDefaults.flingBehavior(
+                    state = pagerState,
+                    snapPositionalThreshold = 0.20f,
+                ),
+            ) { pageIndex ->
+                val pageOffset = ((pagerState.currentPage - pageIndex) + pagerState.currentPageOffsetFraction).absoluteValue
+                val pageScale by animateFloatAsState(
+                    targetValue = (1f - (pageOffset * 0.03f)).coerceIn(0.96f, 1f),
+                    animationSpec = tween(160),
+                    label = "pageScale",
+                )
+                val pageAlpha by animateFloatAsState(
+                    targetValue = (1f - (pageOffset * 0.18f)).coerceIn(0.78f, 1f),
+                    animationSpec = tween(160),
+                    label = "pageAlpha",
+                )
+
+                val pageTiles = pages[pageIndex]
+                val pageStartIndex = pageIndex * APPS_PER_PAGE
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            scaleX = pageScale
+                            scaleY = pageScale
+                            alpha = pageAlpha
+                        },
+                    verticalArrangement = Arrangement.spacedBy(12.dp
