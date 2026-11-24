@@ -46,6 +46,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.graphics.drawable.toBitmap
 import app.seb3thehacker.gearslip.GearslipLog
@@ -154,6 +155,10 @@ internal object PinnedWebSites {
     fun openInBrowser(navigator: CarNavigator, url: String) {
         pendingUrl.value = url
         BuiltInApps.Web.open(navigator)
+    }
+
+    fun openAaBrowserMode(navigator: CarNavigator, url: String = "https://www.google.com") {
+        openInBrowser(navigator, url)
     }
 
     fun consumePendingUrl(): String? {

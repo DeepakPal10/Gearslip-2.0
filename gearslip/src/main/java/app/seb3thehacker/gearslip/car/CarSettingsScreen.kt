@@ -1,3 +1,80 @@
+package app.seb3thehacker.gearslip.car
+
+import android.content.Context
+import android.content.Intent
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import app.seb3thehacker.gearslip.AppSettings
+import app.seb3thehacker.gearslip.car.theme.GsButton
+import app.seb3thehacker.gearslip.car.theme.GsSwitch
+import app.seb3thehacker.gearslip.car.theme.GsTone
+
+private const val KEY_CUSTOM_CAR_APPS = "car_custom_apps"
+
+internal data class LaunchableAppInfo(
+    val label: String,
+    val packageName: String,
+)
+
+internal fun getSelectedCustomCarApps(context: Context): Set<String> =
+    AppSettings.getString(context.applicationContext, KEY_CUSTOM_CAR_APPS, "")
+        .split(",")
+        .map { it.trim() }
+        .filter { it.isNotEmpty() }
+        .toSet()
+
+internal fun setSelectedCustomCarApps(context: Context, packages: Set<String>) {
+    AppSettings.putString(
+        context.applicationContext,
+        KEY_CUSTOM_CAR_APPS,
+        packages.distinct().joinToString(","),
+    )
+}
+
+internal fun loadLaunchablePhoneApps(context: Context): List<LaunchableAppInfo> {
+    val pm = context.packageManager
+    val mainIntent = Intent(Intent.ACTION_MAIN, null).addCategory(Intent.CATEGORY_LAUNCHER)
+    val resolveInfos = pm.queryIntentActivities(mainIntent, 0)
+    return resolveInfos
+        .mapNotNull { info ->
+            val pkg = info.activityInfo?.packageName ?: return@mapNotNull null
+            if (pkg == context.packageName) return@mapNotNull null
+            val label = runCatching { info.loadLabel(pm).toString().trim() }
+                .getOrDefault(pkg)
+                .ifEmpty { pkg }
+            LaunchableAppInfo(label = label, packageName = pkg)
+        }
+        .distinctBy { it.packageName }
+        .sortedBy { it.label.lowercase() }
+}
+
+internal fun launchCustomCarApp(context: Context, packageName: String): Boolean {
+    val launchIntent = context.packageManager.getLaunchIntentForPackage(packageName) ?: return false
+    launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    context.startActivity(launchIntent)
+    return true
+}
+
 @Composable
 private fun CustomCarAppsSetting() {
     val context = LocalContext.current
