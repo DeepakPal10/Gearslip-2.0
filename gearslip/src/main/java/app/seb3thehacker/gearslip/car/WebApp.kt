@@ -15,14 +15,28 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.FrameLayout
 import androidx.car.app.CarToast
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Refresh
@@ -31,18 +45,25 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import app.seb3thehacker.gearslip.GearslipLog
@@ -56,6 +77,7 @@ import app.seb3thehacker.gearslip.car.theme.GsIconBox
 import app.seb3thehacker.gearslip.car.theme.GsIconButton
 import app.seb3thehacker.gearslip.car.theme.GsTone
 import app.seb3thehacker.gearslip.car.theme.gsColors
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -201,6 +223,8 @@ fun WebApp(content: String) {
     var pageFullscreen by remember { mutableStateOf<Pair<View, WebChromeClient.CustomViewCallback>?>(null) }
     var videoMadeFullscreen by remember { mutableStateOf(false) }
     val hideChromeForFullscreen = CarFullscreen.active || pageFullscreen != null
+    var showExitFullscreenPill by remember { mutableStateOf(false) }
+    var exitPillTriggerCount by remember { mutableIntStateOf(0) }
     var pageTitle by remember { mutableStateOf("") }
     var canGoForward by remember { mutableStateOf(false) }
     var address by remember { mutableStateOf<String?>(null) }
@@ -216,6 +240,28 @@ fun WebApp(content: String) {
         PinnedWebSites.ensureLoaded(context)
         AdBlockManager.ensureInitialized(context)
         AdBlockManager.refreshIfDue(context)
+    }
+
+    LaunchedEffect(hideChromeForFullscreen) {
+        if (!hideChromeForFullscreen) {
+            showExitFullscreenPill = false
+        }
+    }
+
+    LaunchedEffect(showExitFullscreenPill, exitPillTriggerCount) {
+        if (showExitFullscreenPill) {
+            delay(3500L)
+            showExitFullscreenPill = false
+        }
+    }
+
+    val exitAllFullscreen: () -> Unit = {
+        showExitFullscreenPill = false
+        pageFullscreen?.second?.onCustomViewHidden()
+        pageFullscreen = null
+        if (CarFullscreen.active) {
+            CarFullscreen.exit()
+        }
     }
 
     LaunchedEffect(desktopMode, web, defaultUserAgent) {
@@ -257,13 +303,8 @@ fun WebApp(content: String) {
     DisposableEffect(web, atStart, pageFullscreen) {
         navigator.backInterceptor = {
             val view = web
-            if (pageFullscreen != null) {
-                pageFullscreen?.second?.onCustomViewHidden()
-                pageFullscreen = null
-                if (videoMadeFullscreen) CarFullscreen.exit()
-                true
-            } else if (CarFullscreen.active) {
-                CarFullscreen.exit()
+            if (pageFullscreen != null || CarFullscreen.active) {
+                exitAllFullscreen()
                 true
             } else if (!atStart && view != null && view.canGoBack()) {
                 view.goBack()
@@ -355,91 +396,147 @@ fun WebApp(content: String) {
             }
         }
         Box(Modifier.weight(1f).fillMaxSize()) {
-        AndroidView(
-            modifier = Modifier.fillMaxSize(),
-            factory = { context ->
-                WebView(context).apply {
-                    val documentUrl = AtomicReference<String?>(null)
-                    CosmeticFilterBridge.attach(this)
-                    defaultUserAgent = settings.userAgentString
-                    settings.javaScriptEnabled = true
-                    settings.domStorageEnabled = true
-                    settings.loadWithOverviewMode = true
-                    settings.useWideViewPort = true
-                    if (desktopMode) {
-                        settings.userAgentString = DESKTOP_USER_AGENT
-                    }
-                    settings.mediaPlaybackRequiresUserGesture = false
-                    settings.offscreenPreRaster = true
-                    webViewClient = LoggingClient(ring, documentUrl, onStarted = { pageUrl = it }) { view ->
-                        canGoForward = view.canGoForward()
-                        pageUrl = view.url
-                        pageTitle = view.title.orEmpty().takeUnless { it.startsWith("http") || it == "about:blank" }.orEmpty()
-                    }
-                    webChromeClient = object : WebChromeClient() {
-                        override fun onReceivedTitle(view: WebView?, title: String?) {
-                            pageTitle = title.orEmpty().takeUnless { it.startsWith("http") || it == "about:blank" }.orEmpty()
+            AndroidView(
+                modifier = Modifier.fillMaxSize(),
+                factory = { context ->
+                    WebView(context).apply {
+                        val documentUrl = AtomicReference<String?>(null)
+                        CosmeticFilterBridge.attach(this)
+                        defaultUserAgent = settings.userAgentString
+                        settings.javaScriptEnabled = true
+                        settings.domStorageEnabled = true
+                        settings.loadWithOverviewMode = true
+                        settings.useWideViewPort = true
+                        if (desktopMode) {
+                            settings.userAgentString = DESKTOP_USER_AGENT
                         }
+                        settings.mediaPlaybackRequiresUserGesture = false
+                        settings.offscreenPreRaster = true
+                        webViewClient = LoggingClient(ring, documentUrl, onStarted = { pageUrl = it }) { view ->
+                            canGoForward = view.canGoForward()
+                            pageUrl = view.url
+                            pageTitle = view.title.orEmpty().takeUnless { it.startsWith("http") || it == "about:blank" }.orEmpty()
+                        }
+                        webChromeClient = object : WebChromeClient() {
+                            override fun onReceivedTitle(view: WebView?, title: String?) {
+                                pageTitle = title.orEmpty().takeUnless { it.startsWith("http") || it == "about:blank" }.orEmpty()
+                            }
 
-                        override fun onReceivedIcon(view: WebView?, icon: Bitmap?) {
-                            val host = view?.url?.let { runCatching { android.net.Uri.parse(it).host }.getOrNull() }?.removePrefix("www.")
-                            if (icon != null && host != null) SiteIcons.save(view.context, host, icon)
-                        }
+                            override fun onReceivedIcon(view: WebView?, icon: Bitmap?) {
+                                val host = view?.url?.let { runCatching { android.net.Uri.parse(it).host }.getOrNull() }?.removePrefix("www.")
+                                if (icon != null && host != null) SiteIcons.save(view.context, host, icon)
+                            }
 
-                        override fun onShowCustomView(view: View, callback: CustomViewCallback) {
-                            videoMadeFullscreen = !CarFullscreen.active
-                            pageFullscreen = view to callback
-                            CarFullscreen.enter()
-                        }
+                            override fun onShowCustomView(view: View, callback: CustomViewCallback) {
+                                videoMadeFullscreen = !CarFullscreen.active
+                                pageFullscreen = view to callback
+                                CarFullscreen.enter()
+                            }
 
-                        override fun onHideCustomView() {
-                            if (pageFullscreen == null) return
-                            pageFullscreen = null
-                            if (videoMadeFullscreen) CarFullscreen.exit()
+                            override fun onHideCustomView() {
+                                if (pageFullscreen == null) return
+                                pageFullscreen = null
+                                if (videoMadeFullscreen) CarFullscreen.exit()
+                            }
                         }
+                        addJavascriptInterface(
+                            FieldFocusBridge(onFocus = { fieldText = it }, onBlur = { fieldText = null }),
+                            "GearslipField",
+                        )
+                        val initial = PinnedWebSites.consumePendingUrl() ?: content
+                        if (initial.isNotBlank()) {
+                            atStart = false
+                            loadContent(this, initial)
+                        }
+                        web = this
                     }
-                    addJavascriptInterface(
-                        FieldFocusBridge(onFocus = { fieldText = it }, onBlur = { fieldText = null }),
-                        "GearslipField",
+                },
+                update = { it.settings.isAlgorithmicDarkeningAllowed = darkOutside },
+                onRelease = { it.destroy() },
+            )
+            if (atStart) {
+                Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
+                    BrowserStartPage(
+                        onOpen = open,
+                        onSearch = {
+                            fieldText = null
+                            address = ""
+                        },
+                        onAdd = { newBookmark = "https://" },
                     )
-                    val initial = PinnedWebSites.consumePendingUrl() ?: content
-                    if (initial.isNotBlank()) {
-                        atStart = false
-                        loadContent(this, initial)
-                    }
-                    web = this
                 }
-            },
-            update = { it.settings.isAlgorithmicDarkeningAllowed = darkOutside },
-            onRelease = { it.destroy() },
-        )
-        if (atStart) {
-            Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
-                BrowserStartPage(
-                    onOpen = open,
-                    onSearch = {
-                        fieldText = null
-                        address = ""
-                    },
-                    onAdd = { newBookmark = "https://" },
-                )
             }
-        }
-        pageFullscreen?.let { (view, _) ->
-            androidx.compose.runtime.key(view) {
-                AndroidView(
-                    factory = { context ->
-                        FrameLayout(context).apply {
-                            setBackgroundColor(android.graphics.Color.BLACK)
-                            (view.parent as? ViewGroup)?.removeView(view)
-                            addView(view, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
-                        }
-                    },
-                    modifier = Modifier.fillMaxSize(),
-                    onRelease = { it.removeAllViews() },
-                )
+            pageFullscreen?.let { (view, _) ->
+                androidx.compose.runtime.key(view) {
+                    AndroidView(
+                        factory = { context ->
+                            FrameLayout(context).apply {
+                                setBackgroundColor(android.graphics.Color.BLACK)
+                                (view.parent as? ViewGroup)?.removeView(view)
+                                addView(view, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+                            }
+                        },
+                        modifier = Modifier.fillMaxSize(),
+                        onRelease = { it.removeAllViews() },
+                    )
+                }
             }
-        }
+
+            if (hideChromeForFullscreen) {
+                // Top edge swipe-down zone to reveal auto-hiding Exit Fullscreen pill
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .fillMaxWidth()
+                        .height(52.dp)
+                        .pointerInput(Unit) {
+                            var totalDragY = 0f
+                            detectVerticalDragGestures(
+                                onDragStart = { totalDragY = 0f },
+                                onVerticalDrag = { _, dragAmount ->
+                                    totalDragY += dragAmount
+                                    if (totalDragY > 24f && !showExitFullscreenPill) {
+                                        showExitFullscreenPill = true
+                                        exitPillTriggerCount++
+                                    }
+                                },
+                            )
+                        },
+                )
+
+                AnimatedVisibility(
+                    visible = showExitFullscreenPill,
+                    enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
+                    exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut(),
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 14.dp),
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .background(Color(0xDD14161D))
+                            .border(1.dp, Color.White.copy(alpha = 0.28f), CircleShape)
+                            .clickable { exitAllFullscreen() }
+                            .padding(horizontal = 18.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Close,
+                            contentDescription = "Exit fullscreen",
+                            tint = Color.White,
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Text(
+                            text = "Exit fullscreen",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.White,
+                        )
+                    }
+                }
+            }
         }
         address?.let { typed ->
             CarKeyboard(
