@@ -503,36 +503,38 @@ fun WebApp(content: String) {
                         },
                 )
 
-                AnimatedVisibility(
-                    visible = showExitFullscreenPill,
-                    enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
-                    exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut(),
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .padding(top = 14.dp),
-                ) {
-                    Row(
+                Box(modifier = Modifier.fillMaxSize()) {
+                    AnimatedVisibility(
+                        visible = showExitFullscreenPill,
+                        enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
+                        exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut(),
                         modifier = Modifier
-                            .clip(CircleShape)
-                            .background(Color(0xDD14161D))
-                            .border(1.dp, Color.White.copy(alpha = 0.28f), CircleShape)
-                            .clickable { exitAllFullscreen() }
-                            .padding(horizontal = 18.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            .align(Alignment.TopCenter)
+                            .padding(top = 14.dp),
                     ) {
-                        Icon(
-                            imageVector = Icons.Filled.Close,
-                            contentDescription = "Exit fullscreen",
-                            tint = Color.White,
-                            modifier = Modifier.size(18.dp),
-                        )
-                        Text(
-                            text = "Exit fullscreen",
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.SemiBold,
-                            color = Color.White,
-                        )
+                        Row(
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .background(Color(0xDD14161D))
+                                .border(1.dp, Color.White.copy(alpha = 0.28f), CircleShape)
+                                .clickable { exitAllFullscreen() }
+                                .padding(horizontal = 18.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Close,
+                                contentDescription = "Exit fullscreen",
+                                tint = Color.White,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Text(
+                                text = "Exit fullscreen",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color.White,
+                            )
+                        }
                     }
                 }
             }
