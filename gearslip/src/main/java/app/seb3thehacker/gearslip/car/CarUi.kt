@@ -13,7 +13,7 @@ import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -82,18 +82,36 @@ import kotlinx.coroutines.delay
 fun CarUi() {
     val scale by CarSettings.scale.collectAsState()
     val phoneDark by CarEnvironment.phoneDark.collectAsState()
+    val systemDark = isSystemInDarkTheme()
     val appTheme by CarSettings.appTheme.collectAsState()
     val uiThemeId by CarSettings.uiTheme.collectAsState()
     val darkStyle by CarSettings.darkStyle.collectAsState()
     val mediaApp by CarServices.mediaApp.collectAsState()
     val darkOutside by CarEnvironment.darkOutside.collectAsState()
     val appContext = LocalContext.current.applicationContext
+
+    remember(appContext) {
+        CarSettings.init(appContext)
+        Prefetch.warm(appContext, force = true)
+        CarServices.init(appContext)
+    }
+
+    DisposableEffect(Unit) {
+        CarSettings.onThemeChanged = { runCatching { CarEnvironment.refresh() } }
+        onDispose {
+            CarSettings.onThemeChanged = null
+            CarServices.shutdown()
+        }
+    }
+
     val dark = when (appTheme) {
-        AppTheme.PHONE -> phoneDark
+        AppTheme.PHONE -> phoneDark || systemDark
         AppTheme.LIGHT -> false
         AppTheme.DARK -> true
     }
-    val colors = (if (dark) dynamicDarkColorScheme(appContext) else dynamicLightColorScheme(appContext)).withTintedSurfaces(dark, darkStyle)
+    val effectiveDarkOutside = dark || darkOutside
+    val colors = (if (dark) dynamicDarkColorScheme(appContext) else dynamicLightColorScheme(appContext))
+        .withTintedSurfaces(dark, darkStyle)
     val base = LocalDensity.current
     val insets by CarEnvironment.insets.collectAsState()
     // Always boot directly into the CarPlay Split Home Screen first
@@ -107,11 +125,9 @@ fun CarUi() {
         }
     }
     LaunchedEffect(controlsWake) { CarKeys.focusMoves.collect { controlsWake.touch() } }
-    remember(appContext) { Prefetch.warm(appContext, force = true); CarServices.init(appContext) }
-    DisposableEffect(Unit) { onDispose { CarServices.shutdown() } }
     LaunchedEffect(Unit) { if (CarSettings.pipesNow) app.seb3thehacker.gearslip.audio.CarAudio.request() }
     LaunchedEffect(Unit) { app.seb3thehacker.gearslip.update.UpdateChecker.onCarConnected(appContext) }
-    LaunchedEffect(darkOutside) { CarServices.nav.pushConfiguration() }
+    LaunchedEffect(effectiveDarkOutside) { CarServices.nav.pushConfiguration() }
 
     val frameForAssistant by CarEnvironment.frame.collectAsState()
     LaunchedEffect(navigator) {
@@ -151,7 +167,7 @@ fun CarUi() {
         LocalHapticFeedback provides NoHaptics,
         LocalDensity provides Density(base.density * scale, base.fontScale),
         LocalCarNavigator provides navigator,
-        LocalDarkOutside provides darkOutside,
+        LocalDarkOutside provides effectiveDarkOutside,
         LocalMapControlsWake provides controlsWake,
         LocalGsTheme provides GsThemes.byId(uiThemeId),
     ) {
@@ -166,7 +182,7 @@ fun CarUi() {
                         var startX = -1f
                         awaitPointerEventScope {
                             while (true) {
-                                val event = awaitPointerEvent(PointerEventPass.Initial)
+                                val event = awaitPointerEvent(PointerEventPass.Final)
                                 controlsWake.touch()
                                 CarFullscreen.touch()
                                 val change = event.changes.firstOrNull() ?: continue
@@ -236,8 +252,7 @@ fun CarUi() {
                                 Modifier
                                     .fillMaxSize()
                                     .graphicsLayer { if (fromHome) alpha = enter.value }
-                                    .background(MaterialTheme.colorScheme.background)
-                                    .pointerInput(Unit) { detectTapGestures { } },
+                                    .background(MaterialTheme.colorScheme.background),
                             ) {
                                 Box(
                                     Modifier.fillMaxSize().graphicsLayer {

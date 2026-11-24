@@ -1,107 +1,245 @@
 package app.seb3thehacker.gearslip.car
 
-import androidx.compose.ui.res.stringResource
-import app.seb3thehacker.gearslip.R
+import android.content.Context
+import android.graphics.Bitmap
 import android.os.Handler
 import android.os.Looper
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
-import android.widget.FrameLayout
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.size
-import app.seb3thehacker.gearslip.car.theme.GsIconBox
-import app.seb3thehacker.gearslip.car.theme.GsTone
-import app.seb3thehacker.gearslip.car.theme.gsColors
-import androidx.compose.runtime.LaunchedEffect
-import app.seb3thehacker.gearslip.car.theme.GsIconButton
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.FrameLayout
+import androidx.car.app.CarToast
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.DesktopWindows
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Public
+import androidx.compose.material.icons.filled.PushPin
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.viewinterop.AndroidView
-import app.seb3thehacker.gearslip.GearslipLog
-import org.json.JSONObject
-import android.graphics.Bitmap
-import androidx.car.app.CarToast
-import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.graphics.drawable.toBitmap
+import app.seb3thehacker.gearslip.GearslipLog
+import app.seb3thehacker.gearslip.R
 import app.seb3thehacker.gearslip.browser.BrowserSettings
 import app.seb3thehacker.gearslip.browser.SiteIcons
 import app.seb3thehacker.gearslip.browser.adblock.AdBlockManager
 import app.seb3thehacker.gearslip.browser.adblock.CosmeticFilterBridge
 import app.seb3thehacker.gearslip.browser.adblock.YouTubeAdBlock
+import app.seb3thehacker.gearslip.car.theme.GsIconBox
+import app.seb3thehacker.gearslip.car.theme.GsIconButton
+import app.seb3thehacker.gearslip.car.theme.GsTone
+import app.seb3thehacker.gearslip.car.theme.gsColors
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import org.json.JSONArray
+import org.json.JSONObject
 import java.util.concurrent.atomic.AtomicReference
-import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.automirrored.filled.ArrowForward
 
-/**
- * A browser inside the car UI. [content] is a URL, or raw HTML when it does not look like one;
- * blank opens [BrowserStartPage], the search bar and bookmark tiles. The bottom bar's Back walks
- * the page history first, then returns to the start page, and only then leaves the app.
- *
- * Every request a page makes passes [AdBlockManager] first, and [CosmeticFilterBridge] hides the
- * ad slots that are left (issue #85). Both are switched from the phone's browser settings.
- *
- * A page's own text inputs can't call up the phone's IME: the car UI lives in a Presentation on
- * a virtual display, and the platform's soft keyboard has nowhere sensible to appear there (see
- * [CarKeyboard]'s doc comment - every other text field in this app already draws its own for the
- * same reason). [FOCUS_TRACKING_JS] reports focus/blur on the page's editable elements, and
- * [CarKeyboard] edits the focused one back through injected JS instead of through the DOM's own
- * native input path, which this Presentation can't reach.
- */
+private const val DESKTOP_USER_AGENT =
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
+
+private const val PINNED_PREFS = "gearslip_pinned_sites"
+private const val PINNED_KEY = "sites_json"
+
+internal data class PinnedSite(
+    val title: String,
+    val url: String,
+)
+
+internal object PinnedWebSites {
+    private val pendingUrl = MutableStateFlow<String?>(null)
+    val pendingOpenUrl: StateFlow<String?> = pendingUrl.asStateFlow()
+
+    private val sitesFlow = MutableStateFlow<List<PinnedSite>>(emptyList())
+    val sites: StateFlow<List<PinnedSite>> = sitesFlow.asStateFlow()
+
+    private var initialized = false
+
+    fun ensureLoaded(context: Context) {
+        if (initialized) return
+        initialized = true
+        val prefs = context.applicationContext.getSharedPreferences(PINNED_PREFS, Context.MODE_PRIVATE)
+        val raw = prefs.getString(PINNED_KEY, null) ?: return
+        val parsed = runCatching {
+            val arr = JSONArray(raw)
+            buildList {
+                for (i in 0 until arr.length()) {
+                    val obj = arr.optJSONObject(i) ?: continue
+                    val u = obj.optString("url").trim()
+                    if (u.startsWith("http://") || u.startsWith("https://")) {
+                        val t = obj.optString("title").trim().ifEmpty {
+                            android.net.Uri.parse(u).host?.removePrefix("www.") ?: u
+                        }
+                        add(PinnedSite(title = t, url = u))
+                    }
+                }
+            }
+        }.getOrDefault(emptyList())
+        sitesFlow.value = parsed
+    }
+
+    private fun persist(context: Context, list: List<PinnedSite>) {
+        val arr = JSONArray()
+        list.forEach { site ->
+            arr.put(JSONObject().put("title", site.title).put("url", site.url))
+        }
+        context.applicationContext
+            .getSharedPreferences(PINNED_PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putString(PINNED_KEY, arr.toString())
+            .apply()
+    }
+
+    fun isPinned(url: String?): Boolean {
+        val target = url?.trim().orEmpty()
+        if (target.isEmpty()) return false
+        return sitesFlow.value.any { it.url == target }
+    }
+
+    fun pin(context: Context, title: String, url: String): Boolean {
+        ensureLoaded(context)
+        val cleanUrl = url.trim()
+        if (!cleanUrl.startsWith("http://") && !cleanUrl.startsWith("https://")) return false
+        val cleanTitle = title.trim().ifEmpty {
+            android.net.Uri.parse(cleanUrl).host?.removePrefix("www.") ?: cleanUrl
+        }
+        val current = sitesFlow.value.filterNot { it.url == cleanUrl }
+        val updated = current + PinnedSite(title = cleanTitle, url = cleanUrl)
+        sitesFlow.value = updated
+        persist(context, updated)
+        return true
+    }
+
+    fun unpin(context: Context, url: String): Boolean {
+        ensureLoaded(context)
+        val cleanUrl = url.trim()
+        val updated = sitesFlow.value.filterNot { it.url == cleanUrl }
+        if (updated.size == sitesFlow.value.size) return false
+        sitesFlow.value = updated
+        persist(context, updated)
+        return true
+    }
+
+    fun openInBrowser(navigator: CarNavigator, url: String) {
+        pendingUrl.value = url
+        BuiltInApps.Web.open(navigator)
+    }
+
+    fun consumePendingUrl(): String? {
+        val u = pendingUrl.value
+        pendingUrl.value = null
+        return u
+    }
+
+    internal fun entries(context: Context): List<Entry> {
+        ensureLoaded(context)
+        return sitesFlow.value.map { site ->
+            val host = runCatching { android.net.Uri.parse(site.url).host }.getOrNull()?.removePrefix("www.")
+            val cachedIcon = host?.let {
+                runCatching { SiteIcons.load(context, it)?.toBitmap(128, 128)?.asImageBitmap() }.getOrNull()
+            }
+            Entry(
+                label = site.title,
+                icon = cachedIcon,
+                pinnedUrl = site.url,
+                fallbackGlyph = Icons.Filled.Public,
+            )
+        }
+    }
+}
+
+private fun applyDesktopMode(view: WebView?, enabled: Boolean, defaultUserAgent: String?) {
+    val wv = view ?: return
+    val targetUa = if (enabled) DESKTOP_USER_AGENT else defaultUserAgent
+    wv.settings.useWideViewPort = true
+    wv.settings.loadWithOverviewMode = true
+    if (wv.settings.userAgentString != targetUa) {
+        wv.settings.userAgentString = targetUa
+        if (wv.url != null && wv.url != "about:blank") {
+            wv.reload()
+        }
+    }
+}
+
 @Composable
 fun WebApp(content: String) {
     val navigator = LocalCarNavigator.current
     val darkOutside = LocalDarkOutside.current
     val ring = String.format("#%06X", MaterialTheme.colorScheme.primary.toArgb() and 0xFFFFFF)
     var web by remember { mutableStateOf<WebView?>(null) }
+    var defaultUserAgent by remember { mutableStateOf<String?>(null) }
+    var desktopMode by remember { mutableStateOf(false) }
     var fieldText by remember { mutableStateOf<String?>(null) }
-    // A page's own full screen, such as a video's: the view to show, and how to hand it back.
     var pageFullscreen by remember { mutableStateOf<Pair<View, WebChromeClient.CustomViewCallback>?>(null) }
-    // Whether the video asked for full screen, rather than the driver from the header: ending
-    // the video's then leaves full screen too, instead of stranding them in it.
     var videoMadeFullscreen by remember { mutableStateOf(false) }
-    val fullscreen = CarFullscreen.active
-    // What the header shows and what its buttons can do, refreshed as pages load.
+    val hideChromeForFullscreen = CarFullscreen.active || pageFullscreen != null
     var pageTitle by remember { mutableStateOf("") }
     var canGoForward by remember { mutableStateOf(false) }
-    // The address being typed, or null while the header shows the page title.
     var address by remember { mutableStateOf<String?>(null) }
-    // An address being typed to save as a bookmark, from the start page's Add tile.
     var newBookmark by remember { mutableStateOf<String?>(null) }
-    // The start page covers the WebView until something is opened.
     var atStart by remember { mutableStateOf(content.isBlank()) }
     var pageUrl by remember { mutableStateOf<String?>(null) }
     val bookmarks by BrowserSettings.bookmarks.collectAsState()
+    val pinnedSites by PinnedWebSites.sites.collectAsState()
+    val pendingPinnedUrl by PinnedWebSites.pendingOpenUrl.collectAsState()
     val context = LocalContext.current
+
     LaunchedEffect(Unit) {
+        PinnedWebSites.ensureLoaded(context)
         AdBlockManager.ensureInitialized(context)
         AdBlockManager.refreshIfDue(context)
     }
+
+    LaunchedEffect(desktopMode, web, defaultUserAgent) {
+        if (web != null) {
+            applyDesktopMode(web, desktopMode, defaultUserAgent)
+        }
+    }
+
     val open: (String) -> Unit = { url ->
         atStart = false
         web?.loadUrl(url)
     }
+
+    LaunchedEffect(pendingPinnedUrl, web) {
+        val target = pendingPinnedUrl
+        if (target != null && web != null) {
+            PinnedWebSites.consumePendingUrl()
+            open(target)
+        }
+    }
+
     val goHome: () -> Unit = {
         if (content.isBlank()) {
             atStart = true
@@ -111,20 +249,23 @@ fun WebApp(content: String) {
         }
     }
 
-    // Leaving the browser ends full screen, whoever started it.
     DisposableEffect(Unit) { onDispose { CarFullscreen.exit() } }
-    // The way out of full screen also ends the page's.
-    LaunchedEffect(fullscreen) {
-        if (!fullscreen) pageFullscreen?.let { (_, callback) ->
+    LaunchedEffect(CarFullscreen.active) {
+        if (!CarFullscreen.active) pageFullscreen?.let { (_, callback) ->
             pageFullscreen = null
             callback.onCustomViewHidden()
         }
     }
 
-    DisposableEffect(web, atStart) {
+    DisposableEffect(web, atStart, pageFullscreen) {
         navigator.backInterceptor = {
             val view = web
-            if (CarFullscreen.active) {
+            if (pageFullscreen != null) {
+                pageFullscreen?.second?.onCustomViewHidden()
+                pageFullscreen = null
+                if (videoMadeFullscreen) CarFullscreen.exit()
+                true
+            } else if (CarFullscreen.active) {
                 CarFullscreen.exit()
                 true
             } else if (!atStart && view != null && view.canGoBack()) {
@@ -141,12 +282,12 @@ fun WebApp(content: String) {
     }
 
     Column(Modifier.fillMaxSize()) {
-        // Back steps through the page's history first (the interceptor above), then leaves.
-        if (!fullscreen) {
+        if (!hideChromeForFullscreen) {
             ScreenHeader(pageTitle.takeUnless { atStart }.orEmpty().ifEmpty { stringResource(R.string.app_browser) }, Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
                 val url = pageUrl
                 if (!atStart && url != null && url.startsWith("http")) {
                     val saved = remember(bookmarks, url) { BrowserSettings.isBookmarked(url) }
+                    val pinned = remember(pinnedSites, url) { PinnedWebSites.isPinned(url) }
                     GsIconBox(
                         {
                             if (saved) BrowserSettings.removeBookmark(url) else BrowserSettings.addBookmark(pageTitle, url)
@@ -156,24 +297,62 @@ fun WebApp(content: String) {
                         gsColors(if (saved) GsTone.Tonal else GsTone.Neutral),
                         latched = saved,
                     ) {
-                        androidx.compose.material3.Icon(
-                            androidx.compose.material.icons.Icons.Filled.Star,
+                        Icon(
+                            Icons.Filled.Star,
                             stringResource(if (saved) R.string.web_remove_this_bookmark else R.string.web_bookmark_this),
                             Modifier.size(24.dp),
-                            tint = if (saved) MaterialTheme.colorScheme.primary else androidx.compose.material3.LocalContentColor.current.copy(alpha = 0.6f),
+                            tint = if (saved) MaterialTheme.colorScheme.primary else LocalContentColor.current.copy(alpha = 0.6f),
+                        )
+                    }
+                    GsIconBox(
+                        {
+                            val done = if (pinned) PinnedWebSites.unpin(context, url) else PinnedWebSites.pin(context, pageTitle, url)
+                            if (done) {
+                                val msg = if (pinned) "Unpinned from Home" else "Pinned to Home"
+                                CarToasts.show(BrowserSettings, msg, CarToast.LENGTH_SHORT)
+                            }
+                        },
+                        Modifier.size(48.dp),
+                        gsColors(if (pinned) GsTone.Tonal else GsTone.Neutral),
+                        latched = pinned,
+                    ) {
+                        Icon(
+                            Icons.Filled.PushPin,
+                            contentDescription = if (pinned) "Unpin from Home" else "Pin to Home",
+                            Modifier.size(24.dp),
+                            tint = if (pinned) MaterialTheme.colorScheme.primary else LocalContentColor.current.copy(alpha = 0.65f),
                         )
                     }
                 }
-                GsIconButton(androidx.compose.material.icons.Icons.Filled.Search, stringResource(R.string.web_search), {
+                if (!atStart) {
+                    GsIconBox(
+                        {
+                            desktopMode = !desktopMode
+                            val msg = if (desktopMode) "Desktop mode ON" else "Desktop mode OFF"
+                            CarToasts.show(BrowserSettings, msg, CarToast.LENGTH_SHORT)
+                        },
+                        Modifier.size(48.dp),
+                        gsColors(if (desktopMode) GsTone.Tonal else GsTone.Neutral),
+                        latched = desktopMode,
+                    ) {
+                        Icon(
+                            Icons.Filled.DesktopWindows,
+                            contentDescription = "Desktop mode",
+                            Modifier.size(24.dp),
+                            tint = if (desktopMode) MaterialTheme.colorScheme.primary else LocalContentColor.current.copy(alpha = 0.7f),
+                        )
+                    }
+                }
+                GsIconButton(Icons.Filled.Search, stringResource(R.string.web_search), {
                     fieldText = null
                     address = ""
                 })
                 if (canGoForward && !atStart) {
-                    GsIconButton(androidx.compose.material.icons.Icons.AutoMirrored.Filled.ArrowForward, stringResource(R.string.web_forward), { web?.goForward() })
+                    GsIconButton(Icons.AutoMirrored.Filled.ArrowForward, stringResource(R.string.web_forward), { web?.goForward() })
                 }
                 if (!atStart) {
-                    GsIconButton(androidx.compose.material.icons.Icons.Filled.Refresh, stringResource(R.string.web_reload), { web?.reload() })
-                    GsIconButton(androidx.compose.material.icons.Icons.Filled.Home, stringResource(R.string.web_start_page), goHome)
+                    GsIconButton(Icons.Filled.Refresh, stringResource(R.string.web_reload), { web?.reload() })
+                    GsIconButton(Icons.Filled.Home, stringResource(R.string.web_start_page), goHome)
                     GsIconButton(MediaIcons.Fullscreen, stringResource(R.string.web_fullscreen), CarFullscreen::enter)
                 }
             }
@@ -183,19 +362,17 @@ fun WebApp(content: String) {
             modifier = Modifier.fillMaxSize(),
             factory = { context ->
                 WebView(context).apply {
-                    // The page a request belongs to, for telling first-party requests from
-                    // third-party ones: shouldInterceptRequest runs off the UI thread, where a
-                    // WebView's own url can't be read.
                     val documentUrl = AtomicReference<String?>(null)
                     CosmeticFilterBridge.attach(this)
+                    defaultUserAgent = settings.userAgentString
                     settings.javaScriptEnabled = true
                     settings.domStorageEnabled = true
                     settings.loadWithOverviewMode = true
                     settings.useWideViewPort = true
-                    // A video starts when the page asks, as in a normal browser. Left at Android's
-                    // default, YouTube's player waits for a second tap before it will play.
+                    if (desktopMode) {
+                        settings.userAgentString = DESKTOP_USER_AGENT
+                    }
                     settings.mediaPlaybackRequiresUserGesture = false
-                    // Draws the page before it's on screen, so the first frame is ready sooner.
                     settings.offscreenPreRaster = true
                     webViewClient = LoggingClient(ring, documentUrl, onStarted = { pageUrl = it }) { view ->
                         canGoForward = view.canGoForward()
@@ -207,7 +384,6 @@ fun WebApp(content: String) {
                             pageTitle = title.orEmpty().takeUnless { it.startsWith("http") || it == "about:blank" }.orEmpty()
                         }
 
-                        // Kept for the start page's tiles, so a bookmark shows its own icon.
                         override fun onReceivedIcon(view: WebView?, icon: Bitmap?) {
                             val host = view?.url?.let { runCatching { android.net.Uri.parse(it).host }.getOrNull() }?.removePrefix("www.")
                             if (icon != null && host != null) SiteIcons.save(view.context, host, icon)
@@ -229,16 +405,19 @@ fun WebApp(content: String) {
                         FieldFocusBridge(onFocus = { fieldText = it }, onBlur = { fieldText = null }),
                         "GearslipField",
                     )
-                    if (content.isNotBlank()) loadContent(this, content)
+                    val initial = PinnedWebSites.consumePendingUrl() ?: content
+                    if (initial.isNotBlank()) {
+                        atStart = false
+                        loadContent(this, initial)
+                    }
                     web = this
                 }
             },
-            // Pages that honour it follow the darkness outside; a first, tweakable use of the signal.
             update = { it.settings.isAlgorithmicDarkeningAllowed = darkOutside },
             onRelease = { it.destroy() },
         )
         if (atStart) {
-            androidx.compose.foundation.layout.Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
+            Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
                 BrowserStartPage(
                     onOpen = open,
                     onSearch = {
@@ -281,7 +460,6 @@ fun WebApp(content: String) {
                 text = typed,
                 onTextChange = { newBookmark = it },
                 onSubmit = {
-                    // Only an address: words typed here would otherwise save a search as a bookmark.
                     val text = typed.trim()
                     val url = when {
                         text.startsWith("http://") || text.startsWith("https://") -> text
@@ -313,7 +491,6 @@ fun WebApp(content: String) {
     }
 }
 
-/** The start page: a web address, or a page of HTML Gearslip made itself. */
 private fun loadContent(view: WebView, content: String) {
     if (content.startsWith("http://") || content.startsWith("https://")) {
         view.loadUrl(content)
@@ -334,7 +511,6 @@ private class LoggingClient(
     override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
         documentUrl.set(url)
         onStarted(url)
-        // Without document-start scripts, inject as early as this WebView allows.
         if (CosmeticFilterBridge.needsPageStartFallback) {
             view?.evaluateJavascript(CosmeticFilterBridge.INJECTION_JS, null)
             view?.evaluateJavascript(YouTubeAdBlock.INJECTION_JS, null)
@@ -350,8 +526,6 @@ private class LoggingClient(
         view?.evaluateJavascript(focusRingJs(ring), null)
     }
 
-    // onPageFinished fires for error pages too, so without this a blocked load (missing
-    // INTERNET permission, no network) looks like a successful one.
     override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: WebResourceError?) {
         if (request?.isForMainFrame == true) {
             GearslipLog.e("car web page FAILED: ${request.url} - ${error?.errorCode} ${error?.description}")
@@ -365,11 +539,9 @@ private class LoggingClient(
     }
 }
 
-/** Tells Kotlin when an editable element on the page gains or loses focus, so [CarKeyboard] can show. */
 private class FieldFocusBridge(private val onFocus: (String) -> Unit, private val onBlur: () -> Unit) {
     private val main = Handler(Looper.getMainLooper())
 
-    // WebView calls into this from its own thread, never Compose's.
     @JavascriptInterface
     fun focused(value: String) { main.post { onFocus(value) } }
 
@@ -377,11 +549,6 @@ private class FieldFocusBridge(private val onFocus: (String) -> Unit, private va
     fun blurred() { main.post { onBlur() } }
 }
 
-// Plain `el.value = x` never reaches a React-controlled input: React replaces the native value
-// setter with its own to track edits, so a direct assignment sets the DOM attribute but leaves
-// React's own state (and anything bound to it, like a search box's query) unaware. Calling the
-// *native* setter through the prototype, the same trick browser extensions use, is what actually
-// notifies it once the 'input' event fires.
 private fun setFieldValueJs(value: String) = """
     (function() {
         var el = document.activeElement;
@@ -394,11 +561,6 @@ private fun setFieldValueJs(value: String) = """
     })();
 """.trimIndent()
 
-// Fires a real Enter keydown first - the same event a site's own JS would see from a physical
-// keyboard - and only falls back to submitting the form directly if nothing handled it, so a
-// search-as-you-type page and a plain <form> both work without submitting twice.
-// Dismissing the host keyboard without blurring the page's own field would leave it focused,
-// so the next tap anywhere with a text cursor pops the keyboard straight back up.
 private const val BLUR_FIELD_JS = "document.activeElement && document.activeElement.blur();"
 
 private const val SUBMIT_FIELD_JS = """
@@ -415,10 +577,6 @@ private const val SUBMIT_FIELD_JS = """
     })();
 """
 
-/**
- * The same ring the rest of the car UI shows, on whatever link or field the knob is on. Many
- * sites hide the browser's own focus outline, which leaves a knob driver with no idea where they are.
- */
 private fun focusRingJs(color: String) = """
     (function() {
         if (document.getElementById('gearslip-focus-ring')) return;
@@ -429,7 +587,6 @@ private fun focusRingJs(color: String) = """
     })();
 """
 
-/** Reports focus/blur on text inputs, textareas and contenteditable elements to [FieldFocusBridge]. */
 private const val FOCUS_TRACKING_JS = """
     (function() {
         function isEditable(el) {

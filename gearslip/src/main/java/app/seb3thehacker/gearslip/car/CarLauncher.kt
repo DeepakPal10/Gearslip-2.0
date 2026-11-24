@@ -1,6 +1,10 @@
 package app.seb3thehacker.gearslip.car
 
 import android.content.Context
+import android.content.Intent
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -8,17 +12,17 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.itemsIndexed
-import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -46,6 +50,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -73,8 +78,47 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.math.absoluteValue
 
-/** One tile on the launcher: either a phone app's own icon or a colorful built-in badge. */
+private const val APPS_PER_PAGE = 4
+
+private val AA_BROWSER_PACKAGES = listOf(
+    "app.aabrowser",
+    "com.fcaronte.aabrowser",
+    "fcaronte.aabrowser",
+)
+
+internal const val CHROME_ENTRY_ID = "builtin:chrome"
+internal const val CHROME_LABEL = "Chrome"
+private const val ANDROID_CHROME_PACKAGE = "com.android.chrome"
+
+private fun isChromeEntry(entry: Entry): Boolean =
+    entry.label == CHROME_LABEL || entry.customPackage == CHROME_ENTRY_ID
+
+private fun chromeEntry(context: Context): Entry {
+    val chromeIcon = runCatching {
+        context.packageManager.getApplicationIcon(ANDROID_CHROME_PACKAGE)
+            .toBitmap(128, 128)
+            .asImageBitmap()
+    }.getOrNull()
+    return Entry(
+        label = CHROME_LABEL,
+        icon = chromeIcon,
+        customPackage = CHROME_ENTRY_ID,
+    )
+}
+
+internal fun launchChromeInBuilt(
+    navigator: CarNavigator,
+    url: String = "https://www.google.com",
+) {
+    runCatching { PinnedWebSites.openAaBrowserMode(navigator, url) }
+        .onFailure {
+            runCatching { PinnedWebSites.openInBrowser(navigator, url) }
+                .onFailure { BuiltInApps.Web.open(navigator) }
+        }
+}
+
 private class Tile(
     val label: String,
     val icon: ImageBitmap? = null,
@@ -86,7 +130,6 @@ private class Tile(
     val onClick: () -> Unit,
 )
 
-/** A launcher app's data, kept apart from [Tile] so it can be cached without capturing click state. */
 internal class Entry(
     val label: String,
     val icon: ImageBitmap?,
@@ -95,11 +138,14 @@ internal class Entry(
     val builtIn: BuiltInApp? = null,
     val messaging: MessagingApp? = null,
     val customPackage: String? = null,
+    val pinnedUrl: String? = null,
+    val fallbackGlyph: ImageVector? = null,
 ) {
     val componentId: String?
         get() = builtIn?.let { BUILT_IN_PREFIX + it.id }
             ?: messaging?.let { MESSAGING_PREFIX + it.packageName }
             ?: customPackage?.let { CUSTOM_APP_PREFIX + it }
+            ?: pinnedUrl?.let { PINNED_SITE_PREFIX + it }
             ?: (template?.component ?: media?.component)?.flattenToString()
 
     val packageName: String?
@@ -108,6 +154,7 @@ internal class Entry(
 
 internal const val MESSAGING_PREFIX = "messages:"
 internal const val CUSTOM_APP_PREFIX = "custom:"
+internal const val PINNED_SITE_PREFIX = "pinned:"
 
 internal object LauncherCache {
     private val flow = MutableStateFlow<List<Entry>?>(null)
@@ -187,13 +234,16 @@ internal fun rememberAllEntries(): List<Entry> {
     val context = LocalContext.current
     val installed by LauncherCache.state.collectAsState()
     val launcher by LauncherMode.active.collectAsState()
+    val pinnedSites by PinnedWebSites.sites.collectAsState()
     LaunchedEffect(context) {
+        PinnedWebSites.ensureLoaded(context)
         if (LauncherCache.entries == null) withContext(Dispatchers.IO) { LauncherCache.load(context) }
     }
-    return remember(installed, launcher) {
+    return remember(installed, launcher, pinnedSites) {
         val base = BuiltInApps.entries(launcher, LauncherMode.canCall(context)) + installed.orEmpty()
         val existingPkgs = base.mapNotNull { it.packageName }.toSet()
-        base + customEntriesFor(context, existingPkgs)
+        val combined = base + customEntriesFor(context, existingPkgs) + PinnedWebSites.entries(context)
+        if (combined.any(::isChromeEntry)) combined else combined + chromeEntry(context)
     }
 }
 
@@ -209,6 +259,7 @@ private fun groupOf(entry: Entry, mediaPackages: Set<String>): AppGroup {
             else -> AppGroup.SETTINGS
         }
     }
+    if (isChromeEntry(entry) || entry.pinnedUrl != null) return AppGroup.WEB
     if (entry.customPackage != null) return AppGroup.OTHER
     if (entry.media != null) return AppGroup.MUSIC
     if (entry.messaging != null) return AppGroup.MESSAGING
@@ -242,12 +293,58 @@ internal fun findEntry(id: String): Entry? =
 
 fun warmLauncherApps(context: Context) { LauncherCache.load(context, force = true) }
 
+internal fun findInstalledAaBrowserPackage(context: Context): String? {
+    val pm = context.packageManager
+    return AA_BROWSER_PACKAGES.firstOrNull { pkg ->
+        runCatching { pm.getLaunchIntentForPackage(pkg) != null }.getOrDefault(false)
+    }
+}
+
+private fun launchPackageDirectly(context: Context, packageName: String) {
+    val intent = context.packageManager.getLaunchIntentForPackage(packageName)
+    if (intent != null) {
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        context.startActivity(intent)
+    }
+}
+
+internal fun launchAaBrowser(context: Context, navigator: CarNavigator): Boolean {
+    val pkg = findInstalledAaBrowserPackage(context)
+    if (pkg != null) {
+        val launched = runCatching { launchCustomCarApp(context, pkg) }
+            .getOrElse {
+                launchPackageDirectly(context, pkg)
+                true
+            }
+        if (launched) return true
+    }
+    PinnedWebSites.openAaBrowserMode(navigator, "https://www.google.com")
+    return false
+}
+
+private fun launchCustomOrAaPackage(context: Context, packageName: String, navigator: CarNavigator) {
+    if (packageName == CHROME_ENTRY_ID) {
+        launchChromeInBuilt(navigator)
+        return
+    }
+    if (packageName in AA_BROWSER_PACKAGES) {
+        launchAaBrowser(context, navigator)
+        return
+    }
+    runCatching { launchCustomCarApp(context, packageName) }
+        .onFailure { launchPackageDirectly(context, packageName) }
+}
+
 internal fun launchEntry(entry: Entry, navigator: CarNavigator, frame: CarEnvironment.Frame) {
-    entry.customPackage?.let { pkg ->
-        launchCustomCarApp(CarEnvironment.appContext ?: return, pkg)
+    if (isChromeEntry(entry)) {
+        launchChromeInBuilt(navigator)
         return
     }
     entry.builtIn?.let { it.open(navigator); return }
+    entry.pinnedUrl?.let { url ->
+        PinnedWebSites.openInBrowser(navigator, url)
+        return
+    }
     entry.template?.let {
         if (it.isNavigation) {
             CarServices.connectNav(it, frame)
@@ -256,12 +353,16 @@ internal fun launchEntry(entry: Entry, navigator: CarNavigator, frame: CarEnviro
             CarServices.connectBrowse(it, frame)
             navigator.browse(entry.label)
         }
+        return
     }
-    entry.media?.let { CarServices.openMedia(it); navigator.media() }
-    entry.messaging?.let { navigator.messages(it.packageName, it.label) }
+    entry.media?.let { CarServices.openMedia(it); navigator.media(); return }
+    entry.messaging?.let { navigator.messages(it.packageName, it.label); return }
+    entry.customPackage?.let { pkg ->
+        val ctx = CarEnvironment.appContext ?: return
+        launchCustomOrAaPackage(ctx, pkg, navigator)
+    }
 }
 
-/** Bright Apple CarPlay-style wallpaper with soft blur and airy light glass glow. */
 @Composable
 internal fun CarPlayWallpaper(modifier: Modifier = Modifier) {
     Box(modifier = modifier.fillMaxSize()) {
@@ -290,6 +391,7 @@ internal fun CarPlayWallpaper(modifier: Modifier = Modifier) {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun CarLauncher() {
     val context = LocalContext.current
@@ -305,17 +407,18 @@ fun CarLauncher() {
         return Tile(
             label = entry.builtIn?.let { context.getString(it.labelRes) } ?: entry.label,
             icon = entry.icon,
-            glyph = entry.builtIn?.glyph,
+            glyph = entry.builtIn?.glyph ?: entry.fallbackGlyph,
             accentId = entry.builtIn?.id ?: entry.label,
             broken = markedBroken(context, entry),
             onLongClick = id?.let { { navigator.showAppMenu(it) } },
             id = id,
         ) {
             id?.let { AppSettings.putString(context, KEY_LAST_APP, it) }
-            if (entry.customPackage != null) {
-                launchCustomCarApp(context, entry.customPackage)
-            } else {
-                openApp(entry, id?.let { running[it] }, navigator, frame)
+            when {
+                isChromeEntry(entry) -> launchChromeInBuilt(navigator)
+                entry.pinnedUrl != null -> PinnedWebSites.openInBrowser(navigator, entry.pinnedUrl)
+                entry.customPackage != null -> launchCustomOrAaPackage(context, entry.customPackage, navigator)
+                else -> openApp(entry, id?.let { running[it] }, navigator, frame)
             }
         }
     }
@@ -323,13 +426,16 @@ fun CarLauncher() {
     val appOrder by CarSettings.appOrder.collectAsState()
     val hidden by CarSettings.hiddenApps.collectAsState()
     val tiles = launcherOrder(all, showVehicleData, appOrder, hidden).map(::tileOf)
+    val pages = remember(tiles) {
+        if (tiles.isEmpty()) listOf(emptyList()) else tiles.chunked(APPS_PER_PAGE)
+    }
 
-    val gridState = rememberLazyGridState()
+    val pagerState = rememberPagerState(pageCount = { pages.size })
     val scope = rememberCoroutineScope()
     val lastFocus = remember { FocusRequester() }
     val lastId = remember { AppSettings.getString(context, KEY_LAST_APP, "") }
-    val lastIndex = tiles.indexOfFirst { it.id == lastId }.coerceAtLeast(0)
-    val focusIndex by rememberUpdatedState(lastIndex)
+    val lastTileIndex = tiles.indexOfFirst { it.id == lastId }.coerceAtLeast(0)
+    val focusIndex by rememberUpdatedState(lastTileIndex)
 
     DisposableEffect(Unit) {
         var used = false
@@ -338,8 +444,9 @@ fun CarLauncher() {
                 return@KnobTaker false
             }
             used = true
+            val pageForFocus = (focusIndex / APPS_PER_PAGE).coerceIn(0, (pages.size - 1).coerceAtLeast(0))
             scope.launch {
-                gridState.scrollToItem(focusIndex)
+                pagerState.animateScrollToPage(pageForFocus, animationSpec = tween(240))
                 withFrameNanos { }
                 runCatching { lastFocus.requestFocus() }
             }
@@ -351,16 +458,88 @@ fun CarLauncher() {
 
     Box(Modifier.fillMaxSize()) {
         CarPlayWallpaper()
-        LazyVerticalGrid(
-            columns = GridCells.Adaptive(minSize = 112.dp),
-            state = gridState,
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(start = 94.dp, end = 24.dp, top = 20.dp, bottom = 20.dp),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(start = 94.dp, end = 24.dp, top = 18.dp, bottom = 14.dp),
+            verticalArrangement = Arrangement.SpaceBetween,
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            itemsIndexed(tiles) { i, tile ->
-                AppTile(tile, if (i == lastIndex) Modifier.focusRequester(lastFocus) else Modifier)
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                pageSpacing = 18.dp,
+            ) { pageIndex ->
+                val pageOffset = ((pagerState.currentPage - pageIndex) + pagerState.currentPageOffsetFraction).absoluteValue
+                val pageScale by animateFloatAsState(
+                    targetValue = (1f - (pageOffset * 0.04f)).coerceIn(0.95f, 1f),
+                    animationSpec = tween(180),
+                    label = "pageScale",
+                )
+                val pageAlpha by animateFloatAsState(
+                    targetValue = (1f - (pageOffset * 0.22f)).coerceIn(0.75f, 1f),
+                    animationSpec = tween(180),
+                    label = "pageAlpha",
+                )
+
+                val pageTiles = pages[pageIndex]
+                val pageStartIndex = pageIndex * APPS_PER_PAGE
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            scaleX = pageScale
+                            scaleY = pageScale
+                            alpha = pageAlpha
+                        },
+                    horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    pageTiles.forEachIndexed { localIdx, tile ->
+                        val globalIndex = pageStartIndex + localIdx
+                        AppTile(
+                            tile = tile,
+                            modifier = Modifier
+                                .weight(1f)
+                                .then(if (globalIndex == lastTileIndex) Modifier.focusRequester(lastFocus) else Modifier),
+                        )
+                    }
+                    repeat((APPS_PER_PAGE - pageTiles.size).coerceAtLeast(0)) {
+                        Spacer(modifier = Modifier.weight(1f))
+                    }
+                }
+            }
+
+            if (pages.size > 1) {
+                Spacer(Modifier.height(10.dp))
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    repeat(pages.size) { idx ->
+                        val selected = pagerState.currentPage == idx
+                        val dotColor by animateColorAsState(
+                            targetValue = if (selected) Color.White else Color.White.copy(alpha = 0.42f),
+                            animationSpec = tween(180),
+                            label = "dotColor",
+                        )
+                        val dotWidth by animateFloatAsState(
+                            targetValue = if (selected) 18f else 8f,
+                            animationSpec = tween(180),
+                            label = "dotWidth",
+                        )
+                        Box(
+                            modifier = Modifier
+                                .height(8.dp)
+                                .width(dotWidth.dp)
+                                .clip(CircleShape)
+                                .background(dotColor),
+                        )
+                    }
+                }
             }
         }
     }
@@ -393,7 +572,7 @@ private fun AppTile(tile: Tile, modifier: Modifier = Modifier) {
     val squircle = RoundedCornerShape(18.dp)
     Box(
         modifier = modifier
-            .height(118.dp)
+            .height(128.dp)
             .clip(RoundedCornerShape(18.dp))
             .background(Color.White.copy(alpha = 0.22f))
             .border(1.dp, Color.White.copy(alpha = 0.35f), RoundedCornerShape(18.dp)),
@@ -407,13 +586,13 @@ private fun AppTile(tile: Tile, modifier: Modifier = Modifier) {
             shape = RoundedCornerShape(18.dp),
         ) {
             Column(
-                Modifier.fillMaxSize().padding(horizontal = 6.dp, vertical = 6.dp),
+                Modifier.fillMaxSize().padding(horizontal = 6.dp, vertical = 8.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center,
             ) {
                 Box(
                     modifier = Modifier
-                        .size(64.dp)
+                        .size(68.dp)
                         .clip(squircle),
                     contentAlignment = Alignment.Center,
                 ) {
@@ -454,8 +633,8 @@ private fun TileIcon(tile: Tile) {
             idOrLabel = tile.accentId ?: tile.label,
             icon = tile.glyph,
             contentDescription = null,
-            boxSize = 64.dp,
-            iconSize = 34.dp,
+            boxSize = 68.dp,
+            iconSize = 36.dp,
             cornerRadius = 18.dp,
         )
     }

@@ -58,10 +58,10 @@ object CarSettings {
     private const val KEY_NIGHT = "car_night_mode"
     private const val KEY_PIPE_AUDIO = "car_pipe_audio"
     private const val KEY_AUDIO_CARS = "car_audio_through_gearslip_cars"
-private const val KEY_SPEAK_DIRECTIONS = "car_speak_directions"
-private const val KEY_DIRECTIONS_OVER_MUSIC = "car_directions_over_music"
-private const val KEY_BLUETOOTH_WARNING = "car_bluetooth_warning"
-private const val KEY_LOCATION_WARNING = "car_location_warning"
+    private const val KEY_SPEAK_DIRECTIONS = "car_speak_directions"
+    private const val KEY_DIRECTIONS_OVER_MUSIC = "car_directions_over_music"
+    private const val KEY_BLUETOOTH_WARNING = "car_bluetooth_warning"
+    private const val KEY_LOCATION_WARNING = "car_location_warning"
     private const val KEY_AUDIO_CHOICE_ASKED = "car_audio_choice_asked"
     private const val KEY_LAST_NAV = "car_last_nav"
     private const val KEY_LAST_MEDIA = "car_last_media"
@@ -80,7 +80,7 @@ private const val KEY_LOCATION_WARNING = "car_location_warning"
     private const val KEY_SYSTEM_SPEECH = "car_system_speech"
     private const val KEY_CAR_SENSORS = "car_sensors_enabled"
     private const val KEY_ADAPTIVE_VIDEO = "adaptive_video_enabled"
-private const val KEY_CLUSTER_VIDEO = "cluster_video_enabled"
+    private const val KEY_CLUSTER_VIDEO = "cluster_video_enabled"
     private const val KEY_DEBUG_BADGE = "debug_badge"
     private const val KEY_SEEN_SAFETY_WARNING = "car_seen_safety_warning"
     private const val KEY_UNITS = "car_units"
@@ -100,6 +100,19 @@ private const val KEY_CLUSTER_VIDEO = "cluster_video_enabled"
     const val HOME = "home"
 
     private lateinit var app: Context
+
+    var onThemeChanged: (() -> Unit)? = null
+
+    private fun saveSetting(key: String, value: String) {
+        if (::app.isInitialized) {
+            AppSettings.putString(app, key, value)
+        }
+    }
+
+    private fun notifyThemeUpdate() {
+        onThemeChanged?.invoke()
+        runCatching { CarEnvironment.refresh() }
+    }
 
     private val scaleFlow = MutableStateFlow(1f)
     private val carDensityFlow = MutableStateFlow(DENSITY_FROM_CAR)
@@ -154,19 +167,19 @@ private const val KEY_CLUSTER_VIDEO = "cluster_video_enabled"
     /** Takes effect the next time the car connects: the video size is agreed at the start. */
     fun setScreenSize(size: ScreenSize?) {
         screenSizeFlow.value = size
-        AppSettings.putString(app, KEY_SCREEN_SIZE, size?.toString().orEmpty())
+        saveSetting(KEY_SCREEN_SIZE, size?.toString().orEmpty())
     }
 
     fun setScreenFit(fit: ScreenFit) {
         screenFitFlow.value = fit
-        AppSettings.putString(app, KEY_SCREEN_FIT, fit.name)
+        saveSetting(KEY_SCREEN_FIT, fit.name)
     }
 
     fun setPreviewSize(size: PreviewSize, custom: ScreenSize? = previewCustomFlow.value) {
         previewSizeFlow.value = size
         previewCustomFlow.value = custom
-        AppSettings.putString(app, KEY_PREVIEW_SIZE, size.name)
-        AppSettings.putString(app, KEY_PREVIEW_CUSTOM, custom?.toString().orEmpty())
+        saveSetting(KEY_PREVIEW_SIZE, size.name)
+        saveSetting(KEY_PREVIEW_CUSTOM, custom?.toString().orEmpty())
     }
 
     private val navBarFlow = MutableStateFlow(NavBarMode.SHOW)
@@ -174,9 +187,8 @@ private const val KEY_CLUSTER_VIDEO = "cluster_video_enabled"
 
     fun setNavBarMode(mode: NavBarMode) {
         navBarFlow.value = mode
-        AppSettings.putString(app, KEY_NAV_BAR, mode.name)
+        saveSetting(KEY_NAV_BAR, mode.name)
     }
-
 
     private val whatsNewFlow = MutableStateFlow(true)
     private val whatsNewSeenFlow = MutableStateFlow(0)
@@ -193,7 +205,7 @@ private const val KEY_CLUSTER_VIDEO = "cluster_video_enabled"
 
     fun setWhatsNewAfterUpdates(on: Boolean) {
         whatsNewFlow.value = on
-        AppSettings.putString(app, KEY_WHATS_NEW, on.toString())
+        saveSetting(KEY_WHATS_NEW, on.toString())
     }
 
     fun openWhatsNew() { whatsNewOpenFlow.value = true }
@@ -202,10 +214,8 @@ private const val KEY_CLUSTER_VIDEO = "cluster_video_enabled"
     fun closeWhatsNew(versionCode: Int) {
         whatsNewOpenFlow.value = false
         whatsNewSeenFlow.value = versionCode
-        AppSettings.putString(app, KEY_WHATS_NEW_SEEN, versionCode.toString())
+        saveSetting(KEY_WHATS_NEW_SEEN, versionCode.toString())
     }
-
-
 
     /** Whether to show miles, feet and °F; [Units.AUTO] follows the countries that still use them. */
     fun imperial(): Boolean = when (unitsFlow.value) {
@@ -216,8 +226,10 @@ private const val KEY_CLUSTER_VIDEO = "cluster_video_enabled"
 
     fun setUnits(units: Units) {
         unitsFlow.value = units
-        AppSettings.putString(app, KEY_UNITS, units.name)
-        Weather.refresh(app, force = true)
+        saveSetting(KEY_UNITS, units.name)
+        if (::app.isInitialized) {
+            Weather.refresh(app, force = true)
+        }
     }
 
     /** Flattened component names of the apps long-pressed onto the nav bar as shortcuts. */
@@ -247,8 +259,6 @@ private const val KEY_CLUSTER_VIDEO = "cluster_video_enabled"
 
     /** The assistant's mic button in the nav bar. Off hides only the button: the car's voice key still works. */
     val navMic: StateFlow<Boolean> = navMicFlow
-
-    /** Lyrics from BetterLyrics and KuGou as well as LRCLIB; off sends song details to LRCLIB only. */
 
     val scale: StateFlow<Float> = scaleFlow
 
@@ -298,12 +308,14 @@ private const val KEY_CLUSTER_VIDEO = "cluster_video_enabled"
 
     /** This car turned Bluetooth music off: from now on its music goes through Gearslip. */
     fun rememberAudioCar(carAddress: String) {
-        AppSettings.putString(app, KEY_AUDIO_CARS, (audioCars() + carKey(carAddress)).distinct().joinToString(","))
+        saveSetting(KEY_AUDIO_CARS, (audioCars() + carKey(carAddress)).distinct().joinToString(","))
         thisCarPipesFlow.value = true
     }
 
-    private fun audioCars(): List<String> =
-        AppSettings.getString(app, KEY_AUDIO_CARS, "").split(",").filter { it.isNotEmpty() }
+    private fun audioCars(): List<String> {
+        if (!::app.isInitialized) return emptyList()
+        return AppSettings.getString(app, KEY_AUDIO_CARS, "").split(",").filter { it.isNotEmpty() }
+    }
 
     /** Settings keep a short hash, not the car's address. */
     private fun carKey(address: String): String =
@@ -322,18 +334,14 @@ private const val KEY_CLUSTER_VIDEO = "cluster_video_enabled"
     /** Warn on the car when the phone's location is off; see LocationCheck. */
     val locationWarning: StateFlow<Boolean> = locationWarningFlow
 
-    /**
-     * Whether the driver has already been offered Bluetooth after turning down the capture
-     * dialog. Offered once only: someone who chose to keep the USB route shouldn't be nagged.
-     */
     /** False until the driver picks USB or Bluetooth, in setup or in settings. */
     val pipeAudioChosen: Boolean
-        get() = AppSettings.getString(app, KEY_PIPE_AUDIO, "") != ""
+        get() = ::app.isInitialized && AppSettings.getString(app, KEY_PIPE_AUDIO, "") != ""
 
     val audioChoiceAsked: Boolean
-        get() = AppSettings.getString(app, KEY_AUDIO_CHOICE_ASKED, "false") == "true"
+        get() = ::app.isInitialized && AppSettings.getString(app, KEY_AUDIO_CHOICE_ASKED, "false") == "true"
 
-    fun markAudioChoiceAsked() = AppSettings.putString(app, KEY_AUDIO_CHOICE_ASKED, "true")
+    fun markAudioChoiceAsked() = saveSetting(KEY_AUDIO_CHOICE_ASKED, "true")
 
     /**
      * Off by default: a driver has to opt into experimental features as a whole before any of
@@ -370,7 +378,7 @@ private const val KEY_CLUSTER_VIDEO = "cluster_video_enabled"
 
     fun setDebugBadge(on: Boolean) {
         debugBadgeFlow.value = on
-        AppSettings.putString(app, KEY_DEBUG_BADGE, on.toString())
+        saveSetting(KEY_DEBUG_BADGE, on.toString())
     }
 
     /**
@@ -383,7 +391,7 @@ private const val KEY_CLUSTER_VIDEO = "cluster_video_enabled"
 
     fun markSafetyWarningSeen() {
         seenSafetyWarningFlow.value = true
-        AppSettings.putString(app, KEY_SEEN_SAFETY_WARNING, "true")
+        saveSetting(KEY_SEEN_SAFETY_WARNING, "true")
     }
 
     fun init(context: Context) {
@@ -405,8 +413,6 @@ private const val KEY_CLUSTER_VIDEO = "cluster_video_enabled"
         playerLeftFlow.value = AppSettings.getString(app, KEY_PLAYER_LEFT, "false") == "true"
         navMicFlow.value = AppSettings.getString(app, KEY_NAV_MIC, "true") == "true"
         pipeAudioFlow.value = AppSettings.getString(app, KEY_PIPE_AUDIO, "true") == "true"
-        // Until the driver sets it, on for USB audio and off for Bluetooth, where the map app's
-        // own voice already reaches the car.
         speakDirectionsFlow.value = AppSettings.getString(app, KEY_SPEAK_DIRECTIONS, pipeAudioFlow.value.toString()) == "true"
         directionsOverMusicFlow.value = AppSettings.getString(app, KEY_DIRECTIONS_OVER_MUSIC, "false") == "true"
         bluetoothWarningFlow.value = AppSettings.getString(app, KEY_BLUETOOTH_WARNING, "true") == "true"
@@ -447,62 +453,65 @@ private const val KEY_CLUSTER_VIDEO = "cluster_video_enabled"
 
     fun setScale(value: Float) {
         scaleFlow.value = value
-        AppSettings.putString(app, KEY_SCALE, value.toString())
+        saveSetting(KEY_SCALE, value.toString())
     }
 
     fun setCarDensity(dpi: Int) {
         carDensityFlow.value = dpi
-        AppSettings.putString(app, KEY_DENSITY, dpi.toString())
+        saveSetting(KEY_DENSITY, dpi.toString())
     }
 
     fun setOpenOnConnect(id: String) {
         openFlow.value = id
-        AppSettings.putString(app, KEY_OPEN, id)
+        saveSetting(KEY_OPEN, id)
     }
 
     fun setLastNav(component: String) {
         lastNavFlow.value = component
-        AppSettings.putString(app, KEY_LAST_NAV, component)
+        saveSetting(KEY_LAST_NAV, component)
     }
 
     fun setLastMedia(component: String) {
         lastMediaFlow.value = component
-        AppSettings.putString(app, KEY_LAST_MEDIA, component)
+        saveSetting(KEY_LAST_MEDIA, component)
     }
 
     fun setAppTheme(theme: AppTheme) {
         themeFlow.value = theme
-        AppSettings.putString(app, KEY_THEME, theme.name)
+        saveSetting(KEY_THEME, theme.name)
+        notifyThemeUpdate()
     }
 
     fun setDarkStyle(style: DarkStyle) {
         darkStyleFlow.value = style
-        AppSettings.putString(app, KEY_DARK_STYLE, style.name)
+        saveSetting(KEY_DARK_STYLE, style.name)
+        notifyThemeUpdate()
     }
 
     fun setUiTheme(id: String) {
         uiThemeFlow.value = id
-        AppSettings.putString(app, KEY_UI_THEME, id)
+        saveSetting(KEY_UI_THEME, id)
+        notifyThemeUpdate()
     }
 
     fun setPlayerTitle(on: Boolean) {
         playerTitleFlow.value = on
-        AppSettings.putString(app, KEY_PLAYER_TITLE, on.toString())
+        saveSetting(KEY_PLAYER_TITLE, on.toString())
     }
 
     fun setNavMic(on: Boolean) {
         navMicFlow.value = on
-        AppSettings.putString(app, KEY_NAV_MIC, on.toString())
+        saveSetting(KEY_NAV_MIC, on.toString())
     }
 
     fun setPlayerLeft(on: Boolean) {
         playerLeftFlow.value = on
-        AppSettings.putString(app, KEY_PLAYER_LEFT, on.toString())
+        saveSetting(KEY_PLAYER_LEFT, on.toString())
     }
 
     fun setAutoplay(on: Boolean) {
         autoplayFlow.value = on
-        AppSettings.putString(app, KEY_AUTOPLAY, on.toString())
+        saveSetting(KEY_AUTOPLAY, on.toString())
     }
 
     /**
@@ -510,68 +519,68 @@ private const val KEY_CLUSTER_VIDEO = "cluster_video_enabled"
      * back asks for it again (or waits for the car, if none is connected).
      */
     fun setPipeAudio(on: Boolean) {
-        // Saved even when unchanged, so picking the default still counts as a choice.
-        AppSettings.putString(app, KEY_PIPE_AUDIO, on.toString())
-        // Choosing Bluetooth by hand overrules what Gearslip learned about each car.
+        saveSetting(KEY_PIPE_AUDIO, on.toString())
         if (!on) {
-            AppSettings.putString(app, KEY_AUDIO_CARS, "")
+            saveSetting(KEY_AUDIO_CARS, "")
             thisCarPipesFlow.value = false
         }
         if (pipeAudioFlow.value == on) return
         pipeAudioFlow.value = on
-        if (AppSettings.getString(app, KEY_SPEAK_DIRECTIONS, "") == "") speakDirectionsFlow.value = on
+        if (::app.isInitialized && AppSettings.getString(app, KEY_SPEAK_DIRECTIONS, "") == "") {
+            speakDirectionsFlow.value = on
+        }
         if (on) CarAudio.request() else CarAudio.release()
     }
 
     fun setSpeakDirections(on: Boolean) {
         speakDirectionsFlow.value = on
-        AppSettings.putString(app, KEY_SPEAK_DIRECTIONS, on.toString())
+        saveSetting(KEY_SPEAK_DIRECTIONS, on.toString())
     }
 
     fun setDirectionsOverMusic(on: Boolean) {
         directionsOverMusicFlow.value = on
-        AppSettings.putString(app, KEY_DIRECTIONS_OVER_MUSIC, on.toString())
+        saveSetting(KEY_DIRECTIONS_OVER_MUSIC, on.toString())
     }
 
     fun setBluetoothWarning(on: Boolean) {
         bluetoothWarningFlow.value = on
-        AppSettings.putString(app, KEY_BLUETOOTH_WARNING, on.toString())
+        saveSetting(KEY_BLUETOOTH_WARNING, on.toString())
     }
 
     fun setLocationWarning(on: Boolean) {
         locationWarningFlow.value = on
-        AppSettings.putString(app, KEY_LOCATION_WARNING, on.toString())
+        saveSetting(KEY_LOCATION_WARNING, on.toString())
     }
 
     fun setExperimentalFeaturesEnabled(on: Boolean) {
         experimentalFeaturesFlow.value = on
-        AppSettings.putString(app, KEY_EXPERIMENTAL_FEATURES, on.toString())
+        saveSetting(KEY_EXPERIMENTAL_FEATURES, on.toString())
     }
 
     fun setSystemSpeech(on: Boolean) {
         systemSpeechFlow.value = on
-        AppSettings.putString(app, KEY_SYSTEM_SPEECH, on.toString())
+        saveSetting(KEY_SYSTEM_SPEECH, on.toString())
     }
 
     fun setAdaptiveVideoEnabled(on: Boolean) {
         adaptiveVideoFlow.value = on
-        AppSettings.putString(app, KEY_ADAPTIVE_VIDEO, on.toString())
+        saveSetting(KEY_ADAPTIVE_VIDEO, on.toString())
     }
 
     fun setClusterVideoEnabled(on: Boolean) {
         clusterVideoFlow.value = on
-        AppSettings.putString(app, KEY_CLUSTER_VIDEO, on.toString())
+        saveSetting(KEY_CLUSTER_VIDEO, on.toString())
     }
 
     fun setCarSensorsEnabled(on: Boolean) {
         carSensorsFlow.value = on
-        AppSettings.putString(app, KEY_CAR_SENSORS, on.toString())
+        saveSetting(KEY_CAR_SENSORS, on.toString())
     }
 
     fun setNightMode(mode: NightMode) {
         nightFlow.value = mode
-        AppSettings.putString(app, KEY_NIGHT, mode.name)
-        CarEnvironment.refresh()
+        saveSetting(KEY_NIGHT, mode.name)
+        runCatching { CarEnvironment.refresh() }
     }
 
     /** Long-pressed onto or off the nav bar. Silently does nothing past [MAX_PINNED] rather than
@@ -584,7 +593,7 @@ private const val KEY_CLUSTER_VIDEO = "cluster_video_enabled"
             else -> current + component
         }
         pinnedFlow.value = next
-        AppSettings.putString(app, KEY_PINNED, next.joinToString(","))
+        saveSetting(KEY_PINNED, next.joinToString(","))
     }
 
     /**
@@ -605,11 +614,11 @@ private const val KEY_CLUSTER_VIDEO = "cluster_video_enabled"
     fun setAppHidden(id: String, hide: Boolean) {
         val next = if (hide) hiddenAppsFlow.value + id else hiddenAppsFlow.value - id
         hiddenAppsFlow.value = next
-        AppSettings.putString(app, KEY_HIDDEN_APPS, next.joinToString(","))
+        saveSetting(KEY_HIDDEN_APPS, next.joinToString(","))
     }
 
     fun setAppOrder(ids: List<String>) {
         appOrderFlow.value = ids
-        AppSettings.putString(app, KEY_APP_ORDER, ids.joinToString(","))
+        saveSetting(KEY_APP_ORDER, ids.joinToString(","))
     }
 }
