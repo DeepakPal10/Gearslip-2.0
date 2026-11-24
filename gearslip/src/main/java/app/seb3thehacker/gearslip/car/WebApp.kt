@@ -23,10 +23,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material.icons.filled.DesktopWindows
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Public
-import androidx.compose.material.icons.filled.PushPin
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
@@ -42,13 +40,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.core.graphics.drawable.toBitmap
 import app.seb3thehacker.gearslip.GearslipLog
 import app.seb3thehacker.gearslip.R
 import app.seb3thehacker.gearslip.browser.BrowserSettings
@@ -170,15 +166,11 @@ internal object PinnedWebSites {
     internal fun entries(context: Context): List<Entry> {
         ensureLoaded(context)
         return sitesFlow.value.map { site ->
-            val host = runCatching { android.net.Uri.parse(site.url).host }.getOrNull()?.removePrefix("www.")
-            val cachedIcon = host?.let {
-                runCatching { SiteIcons.load(context, it)?.toBitmap(128, 128)?.asImageBitmap() }.getOrNull()
-            }
             Entry(
                 label = site.title,
-                icon = cachedIcon,
+                icon = null,
                 pinnedUrl = site.url,
-                fallbackGlyph = Icons.Filled.Public,
+                fallbackGlyph = Icons.Filled.Info,
             )
         }
     }
@@ -322,7 +314,7 @@ fun WebApp(content: String) {
                         latched = pinned,
                     ) {
                         Icon(
-                            Icons.Filled.PushPin,
+                            Icons.Filled.Star,
                             contentDescription = if (pinned) "Unpin from Home" else "Pin to Home",
                             Modifier.size(24.dp),
                             tint = if (pinned) MaterialTheme.colorScheme.primary else LocalContentColor.current.copy(alpha = 0.65f),
@@ -341,7 +333,7 @@ fun WebApp(content: String) {
                         latched = desktopMode,
                     ) {
                         Icon(
-                            Icons.Filled.DesktopWindows,
+                            Icons.Filled.Info,
                             contentDescription = "Desktop mode",
                             Modifier.size(24.dp),
                             tint = if (desktopMode) MaterialTheme.colorScheme.primary else LocalContentColor.current.copy(alpha = 0.7f),
