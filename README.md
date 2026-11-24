@@ -1,8 +1,7 @@
-![Gearslip 2.0 Screenshot](docs/icon/Gear.jng)
-
-# Gearslip
-
-An Android Auto alternative built for everyone.
+<img width="75" height="75" alt="23c4c60c753f4ca5a7847deadb952a51" src="https://github.com/user-attachments/assets/6c910679-a707-4e86-a3f8-f7c3abcbdad5" />
+              
+GearSlip 
+                                                                                                                                                          An Android Auto alternative built for everyone.
 
 [<img src="https://raw.githubusercontent.com/ImranR98/Obtainium/main/assets/graphics/badge_obtainium.png" alt="Get it on Obtainium" height="80">](https://apps.obtainium.imranr.dev/redirect?r=obtainium://add/https://github.com/twinksoftware/gearslip)
 
