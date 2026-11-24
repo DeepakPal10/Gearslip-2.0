@@ -188,3 +188,10 @@ any of these companies. All other names belong to their owners.
 Gearslip belongs to Twink Software LLC and is licensed under AGPL-3.0; see [LICENSE](LICENSE).
 The LLC also sells a separate commercial license for private use outside the AGPL's terms; see
 [NOTICE.md](NOTICE.md).
+## 🙏 Credits & Upstream
+
+This repository is a fork of [Gearslip](https://github.com/twinksoftware/Gearslip) by **Twink Software LLC** (`twinksoftware/Gearslip`).
+
+- **Original Project:** Thanks to the original author and contributors of Gearslip for building the core Android Auto alternative and foundation.
+- **Modifications in Gearslip 2.0:** Customized and updated for dashboard stability, WebView overlay behavior, and build workflows.
+- **License:** Licensed under **AGPL-3.0** (see [LICENSE](LICENSE) and [NOTICE.md](NOTICE.md) for details).
