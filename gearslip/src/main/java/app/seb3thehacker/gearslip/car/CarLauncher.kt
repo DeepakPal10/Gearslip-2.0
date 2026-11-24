@@ -61,6 +61,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.drawable.toBitmap
 import app.seb3thehacker.gearslip.AppSettings
@@ -85,6 +86,7 @@ import kotlin.math.absoluteValue
 private const val GRID_COLUMNS = 4
 private const val GRID_ROWS = 2
 private const val APPS_PER_PAGE = GRID_COLUMNS * GRID_ROWS
+private const val KEY_LAST_APP = "car_last_app"
 
 private val AA_BROWSER_PACKAGES = listOf(
     "app.aabrowser",
@@ -212,7 +214,7 @@ private fun tilesFor(
         val screenRefused = KnownApps.screenBroken(pkg) && KnownApps.playerWorks(pkg)
         val messengerScreen = messaging != null && (car?.kind == "messaging" || car?.kind == "app")
         if (car != null && !messengerScreen && !(media != null && screenRefused)) {
-            add(AppTile.Screen(car, if (media != null) "${car.label} ·$browse" else car.label))
+            add(AppTile.Screen(car, if (media != null) "${car.label} · $browse" else car.label))
         }
         if (media != null) add(AppTile.Player(media))
         else if (messaging != null) add(AppTile.Messages(messaging))
@@ -490,4 +492,178 @@ fun CarLauncher() {
                             scaleY = pageScale
                             alpha = pageAlpha
                         },
-                    verticalArrangement = Arrangement.spacedBy(12.dp
+                    verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically),
+                ) {
+                    repeat(GRID_ROWS) { rowIdx ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f),
+                            horizontalArrangement = Arrangement.spacedBy(14.dp, Alignment.CenterHorizontally),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            repeat(GRID_COLUMNS) { colIdx ->
+                                val slotIdx = rowIdx * GRID_COLUMNS + colIdx
+                                val tile = pageTiles.getOrNull(slotIdx)
+                                if (tile != null) {
+                                    val globalIndex = pageStartIndex + slotIdx
+                                    AppTile(
+                                        tile = tile,
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .fillMaxSize()
+                                            .then(if (globalIndex == lastTileIndex) Modifier.focusRequester(lastFocus) else Modifier),
+                                    )
+                                } else {
+                                    Spacer(modifier = Modifier.weight(1f))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (pages.size > 1) {
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    repeat(pages.size) { idx ->
+                        val selected = pagerState.currentPage == idx
+                        val dotColor by animateColorAsState(
+                            targetValue = if (selected) Color.White else Color.White.copy(alpha = 0.45f),
+                            animationSpec = tween(160),
+                            label = "dotColor",
+                        )
+                        val dotWidth by animateFloatAsState(
+                            targetValue = if (selected) 22f else 10f,
+                            animationSpec = tween(160),
+                            label = "dotWidth",
+                        )
+                        Box(
+                            modifier = Modifier
+                                .height(10.dp)
+                                .width(dotWidth.dp)
+                                .clip(CircleShape)
+                                .background(dotColor)
+                                .clickable {
+                                    scope.launch {
+                                        pagerState.animateScrollToPage(idx, animationSpec = tween(220))
+                                    }
+                                },
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+internal fun markedBroken(context: Context, entry: Entry): Boolean {
+    val pkg = entry.packageName ?: return false
+    if (entry.messaging != null) return KnownApps.brokenAsMessenger(context, pkg)
+    return KnownApps.isBroken(context, pkg) || (entry.template != null && KnownApps.screenBroken(pkg))
+}
+
+@Composable
+internal fun BrokenBadge(size: Dp, modifier: Modifier = Modifier) {
+    Box(
+        modifier.size(size).background(Color(0xFFD32F2F), CircleShape),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            Icons.Filled.Close,
+            contentDescription = stringResource(R.string.launcher_broken),
+            tint = Color.White,
+            modifier = Modifier.size(size * 0.66f),
+        )
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun AppTile(tile: Tile, modifier: Modifier = Modifier) {
+    val squircle = RoundedCornerShape(16.dp)
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(16.dp))
+            .background(Color.White.copy(alpha = 0.22f))
+            .border(1.dp, Color.White.copy(alpha = 0.35f), RoundedCornerShape(16.dp)),
+        contentAlignment = Alignment.Center,
+    ) {
+        GsIconBox(
+            onClick = tile.onClick,
+            onLongClick = tile.onLongClick,
+            modifier = Modifier.fillMaxSize(),
+            colors = GsColors(Color.Transparent, Color.White),
+            shape = RoundedCornerShape(16.dp),
+        ) {
+            Column(
+                Modifier.fillMaxSize().padding(horizontal = 6.dp, vertical = 6.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(54.dp)
+                        .clip(squircle),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    TileIcon(tile)
+                    if (tile.broken) {
+                        BrokenBadge(
+                            18.dp,
+                            Modifier
+                                .align(Alignment.BottomEnd)
+                                .offset(x = (-2).dp, y = (-2).dp)
+                                .border(2.dp, Color.White, CircleShape),
+                        )
+                    }
+                }
+                Spacer(Modifier.height(5.dp))
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color.White.copy(alpha = 0.72f))
+                        .padding(horizontal = 8.dp, vertical = 2.dp),
+                ) {
+                    TileLabel(tile)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TileIcon(tile: Tile) {
+    when {
+        tile.icon != null -> Image(
+            tile.icon,
+            contentDescription = null,
+            modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(16.dp)),
+        )
+        tile.glyph != null -> ColorfulBuiltInIcon(
+            idOrLabel = tile.accentId ?: tile.label,
+            icon = tile.glyph,
+            contentDescription = null,
+            boxSize = 54.dp,
+            iconSize = 30.dp,
+            cornerRadius = 16.dp,
+        )
+    }
+}
+
+@Composable
+private fun TileLabel(tile: Tile, maxLines: Int = 1, modifier: Modifier = Modifier) {
+    Text(
+        tile.label,
+        modifier = modifier,
+        style = MaterialTheme.typography.labelMedium,
+        color = Color(0xFF161820),
+        fontWeight = FontWeight.SemiBold,
+        textAlign = TextAlign.Center,
+        maxLines = maxLines,
+        overflow = TextOverflow.Ellipsis,
+    )
+}

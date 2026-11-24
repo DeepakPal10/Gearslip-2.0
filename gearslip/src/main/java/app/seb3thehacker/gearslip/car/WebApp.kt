@@ -483,7 +483,6 @@ fun WebApp(content: String) {
             }
 
             if (hideChromeForFullscreen) {
-                // Top edge swipe-down zone to reveal auto-hiding Exit Fullscreen pill
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopCenter)
