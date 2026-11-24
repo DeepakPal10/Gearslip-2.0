@@ -1,4 +1,4 @@
-<img src="docs/icon/gearslip-icon.png" alt="Gearslip icon" width="96" height="96">
+![Gearslip 2.0 Screenshot](docs/screenshot.png)
 
 # Gearslip
 
