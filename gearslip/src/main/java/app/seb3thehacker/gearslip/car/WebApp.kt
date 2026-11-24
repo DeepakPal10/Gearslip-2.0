@@ -504,8 +504,8 @@ fun WebApp(content: String) {
                 )
 
                 Box(modifier = Modifier.fillMaxSize()) {
-                    AnimatedVisibility(
-                        visible = showExitFullscreenPill,
+                    androidx.compose.animation.AnimatedVisibility(                            
+                           visible = showExitFullscreenPill,
                         enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
                         exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut(),
                         modifier = Modifier
