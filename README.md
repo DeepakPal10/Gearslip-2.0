@@ -56,7 +56,8 @@ An Android Auto alternative built for everyone — customized for smooth in-car 
 * **Your look:** The car screen takes your phone's Material You colors. Choose flat buttons or ones that look like real keys, and make text bigger on small screens.
 * **Settings on the phone:** Set things up before you drive. A change on either screen shows on both.
 
----
+> **⚠️ Safety & Liability Warning:**  
+> This software is experimental/beta and is provided **"as is"** without any warranty. **If you use this app while driving and any accident, damage, injury, loss, or legal issue occurs, I (the author/maintainer of this repository) am not responsible or liable for it.** Always set up and configure everything while safely parked, obey all traffic laws, and keep your primary attention on driving.
 
 ## 📥 Install
 
