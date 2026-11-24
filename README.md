@@ -10,7 +10,7 @@ An Android Auto alternative built for everyone.
 
 [![forthebadge](https://forthebadge.com/badges/compatibility-club-penguin.svg)](https://forthebadge.com)
 
-# 🚗 Gearslip 2.0 (100 Beta)
+# 🚗 Gearslip 2.0 (v1.0.0-Beta)
 
 An Android Auto alternative built for everyone — customized for smooth in-car dashboard experiences and full-screen WebApp workflows.
 
