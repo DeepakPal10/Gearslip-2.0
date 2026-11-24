@@ -1,4 +1,4 @@
-![Gearslip 2.0 Screenshot](docs/screenshot.png)
+![Gearslip 2.0 Screenshot](docs/icon/Gear.jng)
 
 # Gearslip
 
