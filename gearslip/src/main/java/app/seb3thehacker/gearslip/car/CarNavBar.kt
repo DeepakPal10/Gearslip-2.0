@@ -414,4 +414,389 @@ private fun NavAppIcon(
 ) {
     val darkOutside = LocalDarkOutside.current
     val baseBg = if (darkOutside) Color.White.copy(alpha = 0.14f) else Color.White.copy(alpha = 0.45f)
-    val activeBg = if (
+    val activeBg = if (darkOutside) Color.White.copy(alpha = 0.28f) else Color.White.copy(alpha = 0.85f)
+    val fg = if (darkOutside) Color.White else Color(0xFF141722)
+    val highlight = if (showing) activeBg else baseBg
+    GsIconBox(
+        onClick,
+        Modifier.size(48.dp),
+        colors = GsColors(highlight, fg),
+        latched = showing,
+        shape = RoundedCornerShape(13.dp),
+        onLongClick = onLongClick,
+    ) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            entry.icon?.let {
+                Image(it, entry.label, Modifier.size(34.dp).clip(RoundedCornerShape(9.dp)))
+            }
+            entry.builtIn?.let {
+                ColorfulBuiltInIcon(
+                    idOrLabel = it.id.ifBlank { entry.label },
+                    icon = it.glyph,
+                    contentDescription = entry.shownLabel(),
+                    boxSize = 34.dp,
+                    iconSize = 20.dp,
+                    cornerRadius = 9.dp,
+                )
+            }
+            if (open) {
+                Box(
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 3.dp)
+                        .size(width = 14.dp, height = 3.dp)
+                        .clip(RoundedCornerShape(50))
+                        .background(Color(0xFF007AFF)),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun navColors(selected: Boolean): GsColors {
+    val darkOutside = LocalDarkOutside.current
+    val unselectedBg = if (darkOutside) Color.White.copy(alpha = 0.14f) else Color.White.copy(alpha = 0.45f)
+    val unselectedFg = if (darkOutside) Color.White else Color(0xFF141722)
+    return if (selected) GsColors(Color(0xFF007AFF), Color.White)
+    else GsColors(unselectedBg, unselectedFg)
+}
+
+@Composable
+private fun NavAssistantIcon() {
+    val state by CarAssistant.state.collectAsState()
+    val active = state.phase != CarAssistant.Phase.IDLE
+    GsIconBox(
+        { CarAssistant.start() },
+        modifier = Modifier.size(46.dp),
+        colors = navColors(active),
+        latched = active,
+        shape = RoundedCornerShape(13.dp),
+    ) {
+        MicGlyph(Modifier.padding(NAV_ITEM_PADDING).size(24.dp))
+    }
+}
+
+@Composable
+private fun NavItem(icon: ImageVector, selected: Boolean, onClick: () -> Unit) {
+    GsIconBox(
+        onClick,
+        modifier = Modifier.size(46.dp),
+        colors = navColors(selected),
+        latched = selected,
+        shape = RoundedCornerShape(13.dp),
+    ) {
+        Icon(icon, contentDescription = null, modifier = Modifier.padding(NAV_ITEM_PADDING).size(24.dp))
+    }
+}
+
+@Composable
+internal fun rememberNow(): State<Long> = produceState(System.currentTimeMillis()) {
+    while (true) {
+        value = System.currentTimeMillis()
+        delay(60_000 - value % 60_000)
+    }
+}
+
+private class NextTurn(val icon: CarIcon?, val distance: String, val road: String, val fromPhone: Boolean = false)
+
+@Composable
+private fun rememberNextTurn(): NextTurn? {
+    val status by CarServices.nav.status.collectAsState()
+    val template by CarServices.nav.template.collectAsState()
+    CarSettings.units.collectAsState().value
+    val phone by PhoneNavigation.turn.collectAsState()
+    val routing = ((template as? NavigationTemplate)?.navigationInfo as? RoutingInfo)
+        ?.takeIf { status.phase == CarAppConnection.Phase.RUNNING }
+    val step = routing?.takeIf { !it.isLoading }?.currentStep ?: return phone?.let { phoneTurn(it) }
+    return NextTurn(
+        icon = step.maneuver?.icon,
+        distance = routing.currentDistance.display(),
+        road = step.road.text().ifEmpty { step.cue.text() },
+    )
+}
+
+@Composable
+private fun phoneTurn(turn: PhoneNavigation.Turn): NextTurn {
+    val icon = remember(turn.arrow) {
+        turn.arrow?.let { CarIcon.Builder(androidx.core.graphics.drawable.IconCompat.createWithBitmap(it)).build() }
+    }
+    return NextTurn(icon, turn.distance?.display() ?: turn.distanceText, turn.road, fromPhone = true)
+}
+
+@Composable
+private fun NavTurnPill(turn: NextTurn, onClick: () -> Unit) {
+    GsIconBox(
+        onClick,
+        Modifier.widthIn(max = 340.dp).height(44.dp),
+        colors = gsColors(GsTone.Primary),
+    ) {
+        Row(
+            Modifier.padding(NAV_ITEM_PADDING),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            CarGlyph(turn.icon, Modifier.size(28.dp))
+            if (turn.distance.isNotEmpty()) {
+                Text(turn.distance, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, maxLines = 1)
+            }
+            if (turn.road.isNotEmpty()) {
+                Text(
+                    turn.road,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun NavCallPill(call: CallUiState.Active, modifier: Modifier = Modifier) {
+    val context = LocalContext.current.applicationContext
+    val muted by CarCalls.muted.collectAsState()
+    val elapsed by produceState(0L, call.since) {
+        while (true) {
+            value = (android.os.SystemClock.uptimeMillis() - call.since) / 1000
+            delay(1000 - (android.os.SystemClock.uptimeMillis() - call.since) % 1000)
+        }
+    }
+    val scheme = MaterialTheme.colorScheme
+    Surface(
+        modifier = modifier.height(44.dp),
+        shape = RoundedCornerShape(14.dp),
+        color = scheme.secondaryContainer,
+        contentColor = scheme.onSecondaryContainer,
+    ) {
+        Row(
+            Modifier.fillMaxHeight().padding(start = 12.dp, end = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Icon(Icons.Filled.Call, contentDescription = null, modifier = Modifier.size(20.dp))
+            Text(
+                call.caller?.label ?: stringResource(R.string.navbar_on_call),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false),
+            )
+            Text(
+                "%d:%02d".format(elapsed / 60, elapsed % 60),
+                style = MaterialTheme.typography.titleSmall,
+                maxLines = 1,
+            )
+            Spacer(Modifier.width(2.dp))
+            GsIconButton(
+                if (muted) MediaIcons.MicOff else MediaIcons.Mic,
+                stringResource(if (muted) R.string.navbar_unmute else R.string.navbar_mute),
+                CarCalls::toggleMute,
+                tone = if (muted) GsTone.Primary else GsTone.Neutral,
+                size = 36.dp,
+                iconSize = 22.dp,
+            )
+            GsIconButton(
+                MediaIcons.CallEnd,
+                stringResource(R.string.navbar_end_call),
+                { CarCalls.end(context) },
+                colors = GsColors(scheme.error, scheme.onError),
+                size = 36.dp,
+                iconSize = 22.dp,
+            )
+        }
+    }
+}
+
+@Composable
+private fun nowPlayingLabel(title: String, artist: String): String =
+    listOf(title.trim(), artist.trim()).filter { it.isNotEmpty() }.joinToString(" - ")
+        .ifEmpty { stringResource(R.string.media_nothing_playing) }
+
+@Composable
+private fun NavNowPlaying(navigator: CarNavigator, selected: Boolean, modifier: Modifier = Modifier) {
+    val media = CarServices.media
+    val phase by media.phase.collectAsState()
+    val now by media.now.collectAsState()
+    if (phase != CarMedia.Phase.READY || !now.isActive) return
+    if (navigator.sidePanel == SidePanel.CONTROLS && navigator.current == CarScreen.Home) {
+        DockedPill(navigator, now, selected, modifier)
+        return
+    }
+    if (navigator.current == CarScreen.Media) return
+    val context = LocalContext.current
+    val art by produceState(now.art, now.art, now.artUri) { value = now.art ?: MediaArt.load(context, now.artUri) }
+    val position by produceState(now.currentPosition(), now) {
+        while (true) {
+            value = now.currentPosition()
+            if (!now.playing) break
+            delay(1000)
+        }
+    }
+
+    val keepTitle by CarSettings.playerTitle.collectAsState()
+    var announcing by remember { mutableStateOf(true) }
+    LaunchedEffect(now.title, now.artist) {
+        announcing = true
+        delay(TITLE_SHOWN_MS)
+        announcing = false
+    }
+    val showTitle = keepTitle || announcing
+
+    val scheme = MaterialTheme.colorScheme
+    val onPill = if (selected) scheme.onPrimaryContainer else scheme.onSecondaryContainer
+    Surface(
+        modifier = modifier
+            .animateContentSize()
+            .then(if (showTitle) Modifier.fillMaxWidth() else Modifier)
+            .height(44.dp),
+        shape = RoundedCornerShape(14.dp),
+        color = if (selected) scheme.primaryContainer else scheme.secondaryContainer,
+        contentColor = onPill,
+    ) {
+        Box {
+            Row(
+                Modifier.fillMaxHeight().padding(horizontal = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Row(
+                    Modifier
+                        .then(if (showTitle) Modifier.weight(1f) else Modifier)
+                        .fillMaxHeight()
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable { navigator.media() },
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Box(Modifier.size(34.dp).clip(RoundedCornerShape(8.dp)).background(scheme.surfaceVariant)) {
+                        art?.let { Image(it.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop) }
+                    }
+                    if (showTitle) {
+                        Text(
+                            nowPlayingLabel(now.title, now.artist),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+                if (!showTitle) {
+                    GsIconButton(
+                        MediaIcons.Previous,
+                        stringResource(R.string.player_previous),
+                        media::previous,
+                        enabled = now.canDo(PlaybackState.ACTION_SKIP_TO_PREVIOUS),
+                        size = 36.dp,
+                        iconSize = 22.dp,
+                    )
+                }
+                GsIconButton(
+                    if (now.playing) MediaIcons.Pause else Icons.Filled.PlayArrow,
+                    stringResource(if (now.playing) R.string.player_pause else R.string.media_play),
+                    media::togglePlay,
+                    tone = GsTone.Primary,
+                    size = 36.dp,
+                    iconSize = 22.dp,
+                )
+                if (!showTitle) {
+                    GsIconButton(
+                        MediaIcons.Next,
+                        stringResource(R.string.player_next),
+                        media::next,
+                        enabled = now.canDo(PlaybackState.ACTION_SKIP_TO_NEXT),
+                        size = 36.dp,
+                        iconSize = 22.dp,
+                    )
+                }
+                val playerLeft by CarSettings.playerLeft.collectAsState()
+                val docked = navigator.current == CarScreen.Home && navigator.sidePanel != SidePanel.NONE
+                GsIconButton(
+                    when {
+                        playerLeft && docked -> MediaIcons.DockLeftOpen
+                        playerLeft -> MediaIcons.DockLeft
+                        docked -> MediaIcons.DockRightOpen
+                        else -> MediaIcons.DockRight
+                    },
+                    stringResource(if (docked) R.string.navbar_close_panel else R.string.navbar_dock_player),
+                    navigator::togglePlayerDock,
+                    size = 36.dp,
+                    iconSize = 22.dp,
+                )
+            }
+            if (now.durationMs > 0) {
+                Box(Modifier.matchParentSize(), contentAlignment = Alignment.BottomStart) {
+                    Box(
+                        Modifier
+                            .fillMaxWidth((position.toFloat() / now.durationMs).coerceIn(0f, 1f))
+                            .height(2.dp)
+                            .background(onPill.copy(alpha = 0.7f)),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DockedPill(
+    navigator: CarNavigator,
+    now: NowPlaying,
+    selected: Boolean,
+    modifier: Modifier,
+) {
+    val scheme = MaterialTheme.colorScheme
+    val playerLeft by CarSettings.playerLeft.collectAsState()
+    Box(modifier.fillMaxWidth(), contentAlignment = if (playerLeft) Alignment.CenterStart else Alignment.CenterEnd) {
+        Surface(
+            modifier = Modifier.height(44.dp),
+            shape = RoundedCornerShape(14.dp),
+            color = if (selected) scheme.primaryContainer else scheme.secondaryContainer,
+            contentColor = if (selected) scheme.onPrimaryContainer else scheme.onSecondaryContainer,
+        ) {
+            PlayModeRow(
+                now,
+                CarServices.media,
+                size = 36.dp,
+                modifier = Modifier.fillMaxHeight().padding(horizontal = 4.dp),
+                arrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                GsIconButton(
+                    ImageVector.vectorResource(R.drawable.lyrics_24),
+                    stringResource(R.string.storage_lyrics),
+                    navigator::showSideLyrics,
+                    size = 36.dp,
+                    iconSize = 20.dp,
+                )
+                GsIconButton(
+                    if (playerLeft) MediaIcons.DockLeftOpen else MediaIcons.DockRightOpen,
+                    stringResource(R.string.navbar_close_panel),
+                    navigator::togglePlayerDock,
+                    size = 36.dp,
+                    iconSize = 22.dp,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ChargingGlyph(modifier: Modifier = Modifier, tint: Color = Color(0xFF141722).copy(alpha = 0.78f)) {
+    Canvas(modifier) {
+        val w = size.width
+        val h = size.height
+        val bolt = Path().apply {
+            moveTo(w * 0.58f, 0f)
+            lineTo(w * 0.12f, h * 0.58f)
+            lineTo(w * 0.46f, h * 0.58f)
+            lineTo(w * 0.42f, h)
+            lineTo(w * 0.88f, h * 0.40f)
+            lineTo(w * 0.54f, h * 0.40f)
+            close()
+        }
+        drawPath(bolt, tint)
+    }
+}
