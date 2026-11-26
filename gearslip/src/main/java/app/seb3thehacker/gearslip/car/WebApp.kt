@@ -443,9 +443,11 @@ fun WebApp(content: String) {
 
     DisposableEffect(Unit) { onDispose { CarFullscreen.exit() } }
     LaunchedEffect(CarFullscreen.active) {
-        if (!CarFullscreen.active) pageFullscreen?.let { (_, callback) ->
-            pageFullscreen = null
-            callback.onCustomViewHidden()
+        if (!CarFullscreen.active) {
+            pageFullscreen?.let { (_, callback) ->
+                pageFullscreen = null
+                callback.onCustomViewHidden()
+            }
         }
     }
 
@@ -473,7 +475,10 @@ fun WebApp(content: String) {
 
     Column(Modifier.fillMaxSize()) {
         if (!hideChromeForFullscreen) {
-            ScreenHeader(pageTitle.takeUnless { atStart }.orEmpty().ifEmpty { stringResource(R.string.app_browser) }, Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+            ScreenHeader(
+                pageTitle.takeUnless { atStart }.orEmpty().ifEmpty { stringResource(R.string.app_browser) },
+                Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            ) {
                 val activeUrl = pageUrl
                 if (!atStart && activeUrl != null && activeUrl.startsWith("http")) {
                     val saved = remember(bookmarks, activeUrl) { BrowserSettings.isBookmarked(activeUrl) }
@@ -481,7 +486,11 @@ fun WebApp(content: String) {
                     GsIconBox(
                         {
                             if (saved) BrowserSettings.removeBookmark(activeUrl) else BrowserSettings.addBookmark(pageTitle, activeUrl)
-                            CarToasts.show(BrowserSettings, context.getString(if (saved) R.string.web_bookmark_removed else R.string.web_bookmark_added), CarToast.LENGTH_SHORT)
+                            CarToasts.show(
+                                BrowserSettings,
+                                context.getString(if (saved) R.string.web_bookmark_removed else R.string.web_bookmark_added),
+                                CarToast.LENGTH_SHORT,
+                            )
                         },
                         Modifier.size(48.dp),
                         gsColors(if (saved) GsTone.Tonal else GsTone.Neutral),
@@ -538,12 +547,20 @@ fun WebApp(content: String) {
                         )
                     }
                 }
-                GsIconButton(Icons.Filled.Search, stringResource(R.string.web_search), {
-                    fieldText = null
-                    address = ""
-                })
+                GsIconButton(
+                    Icons.Filled.Search,
+                    stringResource(R.string.web_search),
+                    {
+                        fieldText = null
+                        address = ""
+                    },
+                )
                 if (canGoForward && !atStart) {
-                    GsIconButton(Icons.AutoMirrored.Filled.ArrowForward, stringResource(R.string.web_forward), { web?.goForward() })
+                    GsIconButton(
+                        Icons.AutoMirrored.Filled.ArrowForward,
+                        stringResource(R.string.web_forward),
+                        { web?.goForward() },
+                    )
                 }
                 if (!atStart) {
                     GsIconButton(Icons.Filled.Refresh, stringResource(R.string.web_reload), { web?.reload() })
@@ -640,7 +657,13 @@ fun WebApp(content: String) {
                             FrameLayout(fsContext).apply {
                                 setBackgroundColor(android.graphics.Color.BLACK)
                                 (view.parent as? ViewGroup)?.removeView(view)
-                                addView(view, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+                                addView(
+                                    view,
+                                    FrameLayout.LayoutParams(
+                                        ViewGroup.LayoutParams.MATCH_PARENT,
+                                        ViewGroup.LayoutParams.MATCH_PARENT,
+                                    ),
+                                )
                             }
                         },
                         modifier = Modifier.fillMaxSize(),
@@ -878,4 +901,122 @@ fun WebApp(content: String) {
                                     .padding(vertical = 10.dp),
                                 contentAlignment = Alignment.Center,
                             ) {
-                                Text("Max (100%)", color = Color(0xFF14161
+                                Text("Max (100%)", color = Color(0xFF14161D), fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        address?.let { typed ->
+            CarKeyboard(
+                text = typed,
+                onTextChange = { address = it },
+                onSubmit = {
+                    open(BrowserSettings.addressToUrl(typed))
+                    address = null
+                },
+                onDismiss = { address = null },
+            )
+        }
+        newBookmark?.let { typed ->
+            CarKeyboard(
+                text = typed,
+                onTextChange = { newBookmark = it },
+                onSubmit = {
+                    val text = typed.trim()
+                    val bmUrl = when {
+                        text.startsWith("http://") || text.startsWith("https://") -> text
+                        ' ' !in text && '.' in text -> "https://$text"
+                        else -> null
+                    }
+                    if (bmUrl != null && BrowserSettings.addBookmark("", bmUrl)) {
+                        CarToasts.show(
+                            BrowserSettings,
+                            context.getString(R.string.web_bookmark_added),
+                            CarToast.LENGTH_SHORT,
+                        )
+                    }
+                    newBookmark = null
+                },
+                onDismiss = { newBookmark = null },
+            )
+        }
+        fieldText?.let { text ->
+            CarKeyboard(
+                text = text,
+                onTextChange = { updated ->
+                    fieldText = updated
+                    web?.evaluateJavascript(setFieldValueJs(updated), null)
+                },
+                onSubmit = { web?.evaluateJavascript(SUBMIT_FIELD_JS, null) },
+                onDismiss = {
+                    fieldText = null
+                    web?.evaluateJavascript(BLUR_FIELD_JS, null)
+                },
+            )
+        }
+    }
+}
+
+private class LoggingClient(
+    private val ring: String,
+    private val documentUrl: AtomicReference<String?>,
+    private val onStarted: (String?) -> Unit,
+    private val onLoaded: (WebView) -> Unit,
+) : WebViewClient() {
+    override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? =
+        request?.let { AdBlockManager.response(it, documentUrl.get()) }
+
+    override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
+        documentUrl.set(url)
+        onStarted(url)
+        if (CosmeticFilterBridge.needsPageStartFallback) {
+            view?.evaluateJavascript(CosmeticFilterBridge.INJECTION_JS, null)
+            view?.evaluateJavascript(YouTubeAdBlock.INJECTION_JS, null)
+        }
+    }
+
+    override fun onPageFinished(view: WebView?, url: String?) {
+        documentUrl.set(url)
+        GearslipLog.i("car web page loaded: $url")
+        AdBlockManager.logPageCost(url)
+        view?.let(onLoaded)
+        view?.let { wv ->
+            wv.evaluateJavascript(BrowserExtensionsManager.combinedJs(wv.context), null)
+        }
+        view?.evaluateJavascript(FOCUS_TRACKING_JS, null)
+        view?.evaluateJavascript(focusRingJs(ring), null)
+    }
+
+    override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: WebResourceError?) {
+        if (request?.isForMainFrame == true) {
+            GearslipLog.e("car web page FAILED: ${request.url} - ${error?.errorCode}${error?.description}")
+        }
+    }
+
+    override fun onReceivedHttpError(view: WebView?, request: WebResourceRequest?, response: WebResourceResponse?) {
+        if (request?.isForMainFrame == true) {
+            GearslipLog.w("car web page HTTP ${response?.statusCode} for${request.url}")
+        }
+    }
+}
+
+private class FieldFocusBridge(private val onFocus: (String) -> Unit, private val onBlur: () -> Unit) {
+    private val main = Handler(Looper.getMainLooper())
+
+    @JavascriptInterface
+    fun focused(value: String) {
+        main.post { onFocus(value) }
+    }
+
+    @JavascriptInterface
+    fun blurred() {
+        main.post { onBlur() }
+    }
+}
+
+private fun setFieldValueJs(value: String) = """
+    (function() {
+        var el = document.activeElement;
+        if (!el) return;
