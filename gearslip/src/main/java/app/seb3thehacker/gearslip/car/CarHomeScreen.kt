@@ -1,12 +1,16 @@
 package app.seb3thehacker.gearslip.car
 
+import android.content.Context
+import android.graphics.Bitmap
 import android.media.session.PlaybackState
+import android.net.Uri
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,6 +23,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -51,6 +56,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.seb3thehacker.gearslip.R
+import app.seb3thehacker.gearslip.browser.SiteIcons
 import app.seb3thehacker.gearslip.car.theme.GsButton
 import app.seb3thehacker.gearslip.car.theme.GsIconButton
 import app.seb3thehacker.gearslip.car.theme.GsTone
@@ -65,7 +71,7 @@ import kotlinx.coroutines.launch
  * Apple CarPlay-style Split Home Screen:
  * - Left sidebar inset (84.dp)
  * - Left primary rounded card: Live Navigation / Map widget
- * - Right column: Top quick-destination card (Home & Work) + Bottom Now Playing Media widget
+ * - Right column: Top quick-destination + pinned sites card + Bottom Now Playing Media widget
  */
 @Composable
 fun CarHome() {
@@ -73,6 +79,7 @@ fun CarHome() {
     val navStatus by CarServices.nav.status.collectAsStateWithLifecycle()
     val phase by CarServices.media.phase.collectAsStateWithLifecycle()
     val now by CarServices.media.now.collectAsStateWithLifecycle()
+    val pinnedSites by PinnedWebSites.sites.collectAsStateWithLifecycle()
 
     LaunchedEffect(Unit) { CarServices.autostart(frame) }
     LaunchedEffect(phase) { if (phase == CarMedia.Phase.READY) CarServices.autoplayIfDue() }
@@ -116,7 +123,7 @@ fun CarHome() {
                 }
             }
 
-            // Right stacked widgets: Top Home/Work shortcuts + Bottom Media / Lyrics card
+            // Right stacked widgets: Top shortcuts/pinned sites + Bottom Media / Lyrics card
             Column(
                 modifier = Modifier
                     .weight(0.88f)
@@ -125,14 +132,15 @@ fun CarHome() {
             ) {
                 QuickDestinationsCard(
                     frame = frame,
+                    pinnedSites = pinnedSites,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .weight(0.36f),
+                        .weight(0.38f),
                 )
 
                 val mediaModifier = Modifier
                     .fillMaxWidth()
-                    .weight(0.64f)
+                    .weight(0.62f)
 
                 if (panel == SidePanel.LYRICS && phase == CarMedia.Phase.READY && now.isActive) {
                     SideLyrics(now, mediaModifier)
@@ -146,9 +154,33 @@ fun CarHome() {
 
 private val CARD_SHAPE = RoundedCornerShape(24.dp)
 
+private fun resolveSiteHost(site: PinnedSite): String =
+    site.host.ifBlank {
+        runCatching { Uri.parse(site.url).host?.removePrefix("www.").orEmpty() }.getOrDefault("")
+    }
+
+private fun loadSavedSiteIcon(context: Context, host: String): Bitmap? {
+    if (host.isBlank()) return null
+    return runCatching {
+        val clazz = SiteIcons::class.java
+        val method = clazz.declaredMethods.firstOrNull { m ->
+            m.parameterCount == 2 &&
+                m.parameterTypes[0].isAssignableFrom(Context::class.java) &&
+                m.parameterTypes[1] == String::class.java &&
+                Bitmap::class.java.isAssignableFrom(m.returnType)
+        }
+        method?.invoke(SiteIcons, context.applicationContext, host) as? Bitmap
+    }.getOrNull()
+}
+
 @Composable
-private fun QuickDestinationsCard(frame: CarEnvironment.Frame, modifier: Modifier = Modifier) {
+private fun QuickDestinationsCard(
+    frame: CarEnvironment.Frame,
+    pinnedSites: List<PinnedSite>,
+    modifier: Modifier = Modifier,
+) {
     val navigator = LocalCarNavigator.current
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
     Surface(
@@ -162,8 +194,9 @@ private fun QuickDestinationsCard(frame: CarEnvironment.Frame, modifier: Modifie
         Row(
             modifier = Modifier
                 .fillMaxSize()
+                .horizontalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp, vertical = 10.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             ShortcutCircleButton(
@@ -184,7 +217,70 @@ private fun QuickDestinationsCard(frame: CarEnvironment.Frame, modifier: Modifie
                 circleColor = Color(0xFF34C759),
                 onClick = { navigator.apps() },
             )
+            pinnedSites.forEach { site ->
+                val host = resolveSiteHost(site)
+                val siteIcon by produceState<Bitmap?>(initialValue = null, key1 = host, key2 = site.url) {
+                    value = loadSavedSiteIcon(context, host)
+                }
+                PinnedSiteCircleButton(
+                    label = site.title.ifBlank { host.ifBlank { site.url } },
+                    iconBitmap = siteIcon,
+                    onClick = { PinnedWebSites.openInBrowser(navigator, site.url) },
+                )
+            }
         }
+    }
+}
+
+@Composable
+private fun PinnedSiteCircleButton(
+    label: String,
+    iconBitmap: Bitmap?,
+    onClick: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .width(76.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(48.dp)
+                .clip(CircleShape)
+                .background(Color(0xFF007AFF).copy(alpha = 0.14f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (iconBitmap != null) {
+                Image(
+                    bitmap = iconBitmap.asImageBitmap(),
+                    contentDescription = label,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(CircleShape),
+                    contentScale = ContentScale.Crop,
+                )
+            } else {
+                Icon(
+                    imageVector = Icons.Filled.Home,
+                    contentDescription = label,
+                    tint = Color(0xFF007AFF),
+                    modifier = Modifier.size(24.dp),
+                )
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold,
+            color = Color(0xFF141722),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
@@ -419,65 +515,4 @@ private fun CarPlayMediaCard(now: NowPlaying, modifier: Modifier) {
             ) {
                 GsIconButton(
                     MediaIcons.Previous,
-                    stringResource(R.string.player_previous),
-                    media::previous,
-                    enabled = now.canDo(PlaybackState.ACTION_SKIP_TO_PREVIOUS),
-                    size = 46.dp,
-                    iconSize = 28.dp,
-                )
-                GsIconButton(
-                    if (now.playing) MediaIcons.Pause else Icons.Filled.PlayArrow,
-                    stringResource(if (now.playing) R.string.player_pause else R.string.media_play),
-                    media::togglePlay,
-                    tone = GsTone.Primary,
-                    size = 54.dp,
-                    iconSize = 32.dp,
-                )
-                GsIconButton(
-                    MediaIcons.Next,
-                    stringResource(R.string.player_next),
-                    media::next,
-                    enabled = now.canDo(PlaybackState.ACTION_SKIP_TO_NEXT),
-                    size = 46.dp,
-                    iconSize = 28.dp,
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun SideLyrics(now: NowPlaying, modifier: Modifier) {
-    val navigator = LocalCarNavigator.current
-    val context = LocalContext.current
-    val art by produceState(now.art, now.art, now.artUri) { value = now.art ?: MediaArt.load(context, now.artUri) }
-    Surface(
-        modifier = modifier
-            .gsPanelShadow(CARD_SHAPE)
-            .border(1.dp, Color.White.copy(alpha = 0.55f), CARD_SHAPE),
-        shape = CARD_SHAPE,
-        color = Color.White.copy(alpha = 0.72f),
-        contentColor = Color(0xFF141722),
-    ) {
-        Column(Modifier.fillMaxSize().padding(start = 16.dp, end = 12.dp, top = 12.dp, bottom = 8.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(36.dp).clip(RoundedCornerShape(8.dp)).background(Color.White.copy(alpha = 0.5f))) {
-                    art?.let { Image(it.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop) }
-                }
-                Spacer(Modifier.size(10.dp))
-                Text(
-                    listOf(now.title, now.artist).filter { it.isNotEmpty() }.joinToString(" · "),
-                    Modifier.weight(1f),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = Color(0xFF141722).copy(alpha = 0.72f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                GsIconButton(MediaIcons.MusicNote, stringResource(R.string.home_show_player), navigator::showSidePlayer, size = 36.dp, iconSize = 20.dp)
-                Spacer(Modifier.size(6.dp))
-                GsIconButton(Icons.Filled.Close, stringResource(R.string.home_hide_lyrics), navigator::closeSidePanel, size = 36.dp, iconSize = 20.dp)
-            }
-            LyricsPanel(now, Modifier.weight(1f).fillMaxWidth(), lineStyle = MaterialTheme.typography.headlineSmall)
-        }
-    }
-}
+                    stringResource(R

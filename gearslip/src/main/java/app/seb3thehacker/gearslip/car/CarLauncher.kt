@@ -22,24 +22,32 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerDefaults
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -87,6 +95,8 @@ private const val GRID_COLUMNS = 4
 private const val GRID_ROWS = 2
 private const val APPS_PER_PAGE = GRID_COLUMNS * GRID_ROWS
 private const val KEY_LAST_APP = "car_last_app"
+private const val HUB_PREFS = "gearslip_app_hub"
+private const val HUB_DOWNLOADED_KEY = "downloaded_ids"
 
 private val AA_BROWSER_PACKAGES = listOf(
     "app.aabrowser",
@@ -98,8 +108,44 @@ internal const val CHROME_ENTRY_ID = "builtin:chrome"
 internal const val CHROME_LABEL = "Chrome"
 private const val ANDROID_CHROME_PACKAGE = "com.android.chrome"
 
+internal const val APP_HUB_ENTRY_ID = "builtin:app_hub"
+internal const val APP_HUB_LABEL = "App Hub"
+
+private data class HubStoreApp(
+    val id: String,
+    val title: String,
+    val subtitle: String,
+    val url: String,
+)
+
+private val HUB_STORE_APPS = listOf(
+    HubStoreApp("yt", "YouTube", "Video streaming in browser", "https://m.youtube.com"),
+    HubStoreApp("maps", "Maps", "Search places & routes", "https://maps.google.com"),
+    HubStoreApp("music", "Music", "Audio & radio web player", "https://music.youtube.com"),
+    HubStoreApp("news", "News", "Quick headlines & feeds", "https://news.google.com"),
+)
+
+private fun loadDownloadedHubIds(context: Context): Set<String> {
+    val raw = context.applicationContext
+        .getSharedPreferences(HUB_PREFS, Context.MODE_PRIVATE)
+        .getString(HUB_DOWNLOADED_KEY, "")
+        .orEmpty()
+    return raw.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toSet()
+}
+
+private fun saveDownloadedHubIds(context: Context, ids: Set<String>) {
+    context.applicationContext
+        .getSharedPreferences(HUB_PREFS, Context.MODE_PRIVATE)
+        .edit()
+        .putString(HUB_DOWNLOADED_KEY, ids.joinToString(","))
+        .apply()
+}
+
 private fun isChromeEntry(entry: Entry): Boolean =
     entry.label == CHROME_LABEL || entry.customPackage == CHROME_ENTRY_ID
+
+private fun isAppHubEntry(entry: Entry): Boolean =
+    entry.customPackage == APP_HUB_ENTRY_ID
 
 private fun chromeEntry(context: Context): Entry {
     val chromeIcon = runCatching {
@@ -113,6 +159,13 @@ private fun chromeEntry(context: Context): Entry {
         customPackage = CHROME_ENTRY_ID,
     )
 }
+
+private fun appHubEntry(): Entry = Entry(
+    label = APP_HUB_LABEL,
+    icon = null,
+    customPackage = APP_HUB_ENTRY_ID,
+    fallbackGlyph = Icons.Filled.Add,
+)
 
 internal fun launchChromeInBuilt(
     navigator: CarNavigator,
@@ -234,8 +287,8 @@ internal fun rememberAllEntries(): List<Entry> {
     return remember(installed, launcher, pinnedSites) {
         val base = BuiltInApps.entries(launcher, LauncherMode.canCall(context)) + installed.orEmpty()
         val pinnedEntries = PinnedWebSites.entries(context)
-        val combined = base + pinnedEntries
-        if (combined.any(::isChromeEntry)) combined else combined + chromeEntry(context)
+        val withExtras = base + pinnedEntries + appHubEntry()
+        if (withExtras.any(::isChromeEntry)) withExtras else withExtras + chromeEntry(context)
     }
 }
 
@@ -251,7 +304,7 @@ private fun groupOf(entry: Entry, mediaPackages: Set<String>): AppGroup {
             else -> AppGroup.SETTINGS
         }
     }
-    if (isChromeEntry(entry) || entry.pinnedUrl != null) return AppGroup.WEB
+    if (isChromeEntry(entry) || isAppHubEntry(entry) || entry.pinnedUrl != null) return AppGroup.WEB
     if (entry.customPackage != null) return AppGroup.OTHER
     if (entry.media != null) return AppGroup.MUSIC
     if (entry.messaging != null) return AppGroup.MESSAGING
@@ -270,7 +323,7 @@ private fun groupOf(entry: Entry, mediaPackages: Set<String>): AppGroup {
 internal fun launcherOrder(all: List<Entry>, showVehicleData: Boolean, custom: List<String>, hidden: Set<String>): List<Entry> {
     val shown = all.filter { entry ->
         (entry.builtIn !== BuiltInApps.VehicleData || showVehicleData) &&
-            (entry.pinnedUrl != null || entry.componentId !in hidden)
+            (entry.pinnedUrl != null || isAppHubEntry(entry) || entry.componentId !in hidden)
     }
     val mediaPackages = shown.mapNotNull { it.media?.component?.packageName }.toSet()
     val grouped = shown.sortedWith(
@@ -393,6 +446,7 @@ fun CarLauncher() {
     val all = rememberAllEntries()
     val running = rememberRunningApps()
     val showVehicleData = rememberVehicleDataShown()
+    var showAppHub by remember { mutableStateOf(false) }
 
     fun tileOf(entry: Entry): Tile {
         val id = entry.componentId
@@ -407,6 +461,7 @@ fun CarLauncher() {
         ) {
             id?.let { AppSettings.putString(context, KEY_LAST_APP, it) }
             when {
+                isAppHubEntry(entry) -> showAppHub = true
                 isChromeEntry(entry) -> launchChromeInBuilt(navigator)
                 entry.pinnedUrl != null -> PinnedWebSites.openInBrowser(navigator, entry.pinnedUrl)
                 entry.customPackage != null -> launchCustomOrAaPackage(context, entry.customPackage, navigator)
@@ -553,6 +608,151 @@ fun CarLauncher() {
                                     }
                                 },
                         )
+                    }
+                }
+            }
+        }
+
+        if (showAppHub) {
+            LauncherAppHubSheet(
+                onDismiss = { showAppHub = false },
+                onOpenUrl = { url ->
+                    showAppHub = false
+                    PinnedWebSites.openInBrowser(navigator, url)
+                },
+            )
+        }
+    }
+}
+
+@Composable
+private fun LauncherAppHubSheet(
+    onDismiss: () -> Unit,
+    onOpenUrl: (String) -> Unit,
+) {
+    val context = LocalContext.current
+    var downloadedIds by remember { mutableStateOf(loadDownloadedHubIds(context)) }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.55f))
+            .clickable(onClick = onDismiss),
+        contentAlignment = Alignment.Center,
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth(0.86f)
+                .fillMaxSize(0.80f)
+                .clickable(enabled = false) {},
+            shape = RoundedCornerShape(24.dp),
+            color = Color(0xFF171A23),
+            contentColor = Color.White,
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(18.dp),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text(
+                        text = APP_HUB_LABEL,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Icon(
+                        imageVector = Icons.Filled.Close,
+                        contentDescription = "Close",
+                        modifier = Modifier
+                            .size(26.dp)
+                            .clickable(onClick = onDismiss),
+                    )
+                }
+
+                Spacer(Modifier.height(12.dp))
+
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    items(HUB_STORE_APPS, key = { it.id }) { app ->
+                        val isDownloaded = app.id in downloadedIds
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = Color.White.copy(alpha = 0.08f),
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(44.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0xFF007AFF).copy(alpha = 0.25f)),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Icon(
+                                        imageVector = if (isDownloaded) Icons.Filled.PlayArrow else Icons.Filled.Home,
+                                        contentDescription = null,
+                                        tint = Color.White,
+                                        modifier = Modifier.size(22.dp),
+                                    )
+                                }
+
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = app.title,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.SemiBold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                    Text(
+                                        text = app.subtitle,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = Color.White.copy(alpha = 0.7f),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+
+                                val actionLabel = if (isDownloaded) "Open" else "Download"
+                                val actionColor = if (isDownloaded) Color(0xFF34C759) else Color(0xFF007AFF)
+
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(actionColor)
+                                        .clickable {
+                                            if (!isDownloaded) {
+                                                val updated = downloadedIds + app.id
+                                                downloadedIds = updated
+                                                saveDownloadedHubIds(context, updated)
+                                                PinnedWebSites.pin(context, app.title, app.url)
+                                            } else {
+                                                onOpenUrl(app.url)
+                                            }
+                                        }
+                                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                                ) {
+                                    Text(
+                                        text = actionLabel,
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White,
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }

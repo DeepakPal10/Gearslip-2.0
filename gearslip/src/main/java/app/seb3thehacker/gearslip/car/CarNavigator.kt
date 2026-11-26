@@ -63,7 +63,10 @@ class CarNavigator(startId: String) {
 
     private val stack = mutableStateListOf(
         Crumb(
-            if (CarApps.find(startId) != null) CarScreen.App(startId) else CarScreen.Home,
+            when (startId) {
+                "settings" -> CarScreen.Settings
+                else -> if (CarApps.find(startId) != null) CarScreen.App(startId) else CarScreen.Home
+            },
             "Home",
             R.string.crumb_home,
         ),
@@ -155,7 +158,13 @@ class CarNavigator(startId: String) {
         if (replyTo == null) dashboard() else push(CarScreen.Notifications(replyTo), "Reply", R.string.crumb_reply)
     }
 
-    fun open(id: String) { push(CarScreen.App(id), CarApps.find(id)?.label ?: id, CarApps.find(id)?.labelRes ?: 0) }
+    fun open(id: String) {
+        if (id == "settings") {
+            settings()
+            return
+        }
+        push(CarScreen.App(id), CarApps.find(id)?.label ?: id, CarApps.find(id)?.labelRes ?: 0)
+    }
 
     /** Jumps straight to a step already on the trail, dropping everything after it - what
      * tapping a breadcrumb does. Index 0 (Home) is always on the trail, so this always succeeds. */

@@ -102,7 +102,7 @@ object CarApps {
         CarApp("allapps", "All apps", R.string.app_all_apps, Icons.Filled.List) {
             AllAppsScreen()
         },
-        CarApp("exit", "Exit", R.string.app_all_apps, Icons.Filled.Close) {
+        CarApp("exit", "Exit", R.string.app_browser, Icons.Filled.Close) {
             AllAppsScreen()
         },
     )
@@ -145,7 +145,6 @@ internal fun GoogleMapsScreen() {
         }.getOrDefault(false)
 
         if (!launchedNav) {
-            // Fallback inside built-in WebApp if Google Maps app is not installed
             navigator.home()
         }
     }

@@ -261,7 +261,8 @@ object UpdateChecker {
 
     private fun onWifi(context: Context): Boolean {
         val cm = context.getSystemService(ConnectivityManager::class.java) ?: return false
-        val caps = cm.getNetworkCapabilities(cm.activeNetwork) ?: return false
+        val active = cm.activeNetwork ?: return false
+        val caps = cm.getNetworkCapabilities(active) ?: return false
         return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
             caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED)
     }
@@ -457,7 +458,7 @@ object UpdateChecker {
                         output.write(buffer, 0, n)
                         digest.update(buffer, 0, n)
                         done += n
-                        val percent = if (total > 0) (done * 100 / total).toInt() else 0
+                        val percent = if (total > 0) (done * 100 / total).toInt().coerceIn(0, 100) else 0
                         if (percent != shown) {
                             shown = percent
                             flow.value = State.Downloading(release, percent / 100f)
@@ -465,6 +466,7 @@ object UpdateChecker {
                     }
                 }
             }
+            if (done <= 0L) error("The download came back empty. Try again.")
             if (release.size > 0 && done != release.size) error("The download stopped early. Try again.")
             val hex = digest.digest().joinToString("") { "%02x".format(it) }
             if (release.sha256 != null && !hex.equals(release.sha256, ignoreCase = true)) {

@@ -84,6 +84,7 @@ fun CarUi() {
     val phoneDark by CarEnvironment.phoneDark.collectAsState()
     val systemDark = isSystemInDarkTheme()
     val appTheme by CarSettings.appTheme.collectAsState()
+    val nightMode by CarSettings.nightMode.collectAsState()
     val uiThemeId by CarSettings.uiTheme.collectAsState()
     val darkStyle by CarSettings.darkStyle.collectAsState()
     val mediaApp by CarServices.mediaApp.collectAsState()
@@ -109,7 +110,7 @@ fun CarUi() {
         AppTheme.LIGHT -> false
         AppTheme.DARK -> true
     }
-    val effectiveDarkOutside = dark || darkOutside
+    val effectiveDarkOutside = dark || darkOutside || nightMode == NightMode.NIGHT
     val colors = (if (dark) dynamicDarkColorScheme(appContext) else dynamicLightColorScheme(appContext))
         .withTintedSurfaces(dark, darkStyle)
     val base = LocalDensity.current

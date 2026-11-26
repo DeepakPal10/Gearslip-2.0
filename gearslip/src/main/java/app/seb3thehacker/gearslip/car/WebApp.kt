@@ -1,6 +1,8 @@
 package app.seb3thehacker.gearslip.car
 
+import android.app.Activity
 import android.content.Context
+import android.content.ContextWrapper
 import android.graphics.Bitmap
 import android.os.Handler
 import android.os.Looper
@@ -34,23 +36,26 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -94,6 +99,7 @@ private const val PINNED_KEY = "sites_json"
 internal data class PinnedSite(
     val title: String,
     val url: String,
+    val host: String = "",
 )
 
 internal object PinnedWebSites {
@@ -104,6 +110,9 @@ internal object PinnedWebSites {
     val sites: StateFlow<List<PinnedSite>> = sitesFlow.asStateFlow()
 
     private var initialized = false
+
+    private fun extractHost(url: String): String =
+        runCatching { android.net.Uri.parse(url).host?.removePrefix("www.").orEmpty() }.getOrDefault("")
 
     fun ensureLoaded(context: Context) {
         if (initialized) return
@@ -117,10 +126,9 @@ internal object PinnedWebSites {
                     val obj = arr.optJSONObject(i) ?: continue
                     val u = obj.optString("url").trim()
                     if (u.startsWith("http://") || u.startsWith("https://")) {
-                        val t = obj.optString("title").trim().ifEmpty {
-                            android.net.Uri.parse(u).host?.removePrefix("www.") ?: u
-                        }
-                        add(PinnedSite(title = t, url = u))
+                        val h = obj.optString("host").trim().ifEmpty { extractHost(u) }
+                        val t = obj.optString("title").trim().ifEmpty { h.ifEmpty { u } }
+                        add(PinnedSite(title = t, url = u, host = h))
                     }
                 }
             }
@@ -131,7 +139,12 @@ internal object PinnedWebSites {
     private fun persist(context: Context, list: List<PinnedSite>) {
         val arr = JSONArray()
         list.forEach { site ->
-            arr.put(JSONObject().put("title", site.title).put("url", site.url))
+            arr.put(
+                JSONObject()
+                    .put("title", site.title)
+                    .put("url", site.url)
+                    .put("host", site.host.ifEmpty { extractHost(site.url) }),
+            )
         }
         context.applicationContext
             .getSharedPreferences(PINNED_PREFS, Context.MODE_PRIVATE)
@@ -150,11 +163,10 @@ internal object PinnedWebSites {
         ensureLoaded(context)
         val cleanUrl = url.trim()
         if (!cleanUrl.startsWith("http://") && !cleanUrl.startsWith("https://")) return false
-        val cleanTitle = title.trim().ifEmpty {
-            android.net.Uri.parse(cleanUrl).host?.removePrefix("www.") ?: cleanUrl
-        }
+        val cleanHost = extractHost(cleanUrl)
+        val cleanTitle = title.trim().ifEmpty { cleanHost.ifEmpty { cleanUrl } }
         val current = sitesFlow.value.filterNot { it.url == cleanUrl }
-        val updated = current + PinnedSite(title = cleanTitle, url = cleanUrl)
+        val updated = current + PinnedSite(title = cleanTitle, url = cleanUrl, host = cleanHost)
         sitesFlow.value = updated
         persist(context, updated)
         return true
@@ -185,14 +197,30 @@ internal object PinnedWebSites {
         return u
     }
 
+    private fun loadSavedIcon(context: Context, host: String): Any? {
+        if (host.isBlank()) return null
+        return runCatching {
+            val clazz = SiteIcons::class.java
+            val method = clazz.declaredMethods.firstOrNull { m ->
+                m.parameterCount == 2 &&
+                    m.parameterTypes[0].isAssignableFrom(Context::class.java) &&
+                    m.parameterTypes[1] == String::class.java
+            }
+            method?.invoke(SiteIcons, context.applicationContext, host)
+        }.getOrNull()
+    }
+
+    @Suppress("UNCHECKED_CAST")
     internal fun entries(context: Context): List<Entry> {
         ensureLoaded(context)
         return sitesFlow.value.map { site ->
+            val cleanHost = site.host.ifEmpty { extractHost(site.url) }
+            val iconObj = loadSavedIcon(context, cleanHost)
             Entry(
                 label = site.title,
-                icon = null,
+                icon = iconObj as? androidx.compose.ui.graphics.painter.Painter,
                 pinnedUrl = site.url,
-                fallbackGlyph = Icons.Filled.Info,
+                fallbackGlyph = Icons.Filled.Home,
             )
         }
     }
@@ -203,11 +231,31 @@ private fun applyDesktopMode(view: WebView?, enabled: Boolean, defaultUserAgent:
     val targetUa = if (enabled) DESKTOP_USER_AGENT else defaultUserAgent
     wv.settings.useWideViewPort = true
     wv.settings.loadWithOverviewMode = true
-    if (wv.settings.userAgentString != targetUa) {
+    val uaChanged = targetUa != null && wv.settings.userAgentString != targetUa
+    if (uaChanged) {
         wv.settings.userAgentString = targetUa
-        if (wv.url != null && wv.url != "about:blank") {
-            wv.reload()
-        }
+    }
+    if (wv.url != null && wv.url != "about:blank") {
+        wv.reload()
+    }
+}
+
+private fun Context.findActivity(): Activity? {
+    var ctx: Context? = this
+    while (ctx is ContextWrapper) {
+        if (ctx is Activity) return ctx
+        ctx = ctx.baseContext
+    }
+    return null
+}
+
+private fun applyWindowBrightness(context: Context, level: Float) {
+    val clamped = level.coerceIn(0.1f, 1.0f)
+    val activity = context.findActivity() ?: return
+    runCatching {
+        val attrs = activity.window.attributes
+        attrs.screenBrightness = clamped
+        activity.window.attributes = attrs
     }
 }
 
@@ -225,6 +273,10 @@ fun WebApp(content: String) {
     val hideChromeForFullscreen = CarFullscreen.active || pageFullscreen != null
     var showExitFullscreenPill by remember { mutableStateOf(false) }
     var exitPillTriggerCount by remember { mutableIntStateOf(0) }
+    var showBrightnessPill by remember { mutableStateOf(false) }
+    var brightnessPillTriggerCount by remember { mutableIntStateOf(0) }
+    var showBrightnessBoosterSheet by remember { mutableStateOf(false) }
+    var boosterInteractionTick by remember { mutableIntStateOf(0) }
     var pageTitle by remember { mutableStateOf("") }
     var canGoForward by remember { mutableStateOf(false) }
     var address by remember { mutableStateOf<String?>(null) }
@@ -235,6 +287,14 @@ fun WebApp(content: String) {
     val pinnedSites by PinnedWebSites.sites.collectAsState()
     val pendingPinnedUrl by PinnedWebSites.pendingOpenUrl.collectAsState()
     val context = LocalContext.current
+    var brightnessLevel by remember {
+        mutableFloatStateOf(
+            runCatching {
+                val cur = context.findActivity()?.window?.attributes?.screenBrightness ?: -1f
+                if (cur in 0.1f..1.0f) cur else 0.75f
+            }.getOrDefault(0.75f),
+        )
+    }
 
     LaunchedEffect(Unit) {
         PinnedWebSites.ensureLoaded(context)
@@ -255,6 +315,20 @@ fun WebApp(content: String) {
         }
     }
 
+    LaunchedEffect(showBrightnessPill, brightnessPillTriggerCount) {
+        if (showBrightnessPill) {
+            delay(3500L)
+            showBrightnessPill = false
+        }
+    }
+
+    LaunchedEffect(showBrightnessBoosterSheet, boosterInteractionTick) {
+        if (showBrightnessBoosterSheet) {
+            delay(4000L)
+            showBrightnessBoosterSheet = false
+        }
+    }
+
     val exitAllFullscreen: () -> Unit = {
         showExitFullscreenPill = false
         pageFullscreen?.second?.onCustomViewHidden()
@@ -265,7 +339,7 @@ fun WebApp(content: String) {
     }
 
     LaunchedEffect(desktopMode, web, defaultUserAgent) {
-        if (web != null) {
+        if (web != null && defaultUserAgent != null) {
             applyDesktopMode(web, desktopMode, defaultUserAgent)
         }
     }
@@ -303,7 +377,10 @@ fun WebApp(content: String) {
     DisposableEffect(web, atStart, pageFullscreen) {
         navigator.backInterceptor = {
             val view = web
-            if (pageFullscreen != null || CarFullscreen.active) {
+            if (showBrightnessBoosterSheet) {
+                showBrightnessBoosterSheet = false
+                true
+            } else if (pageFullscreen != null || CarFullscreen.active) {
                 exitAllFullscreen()
                 true
             } else if (!atStart && view != null && view.canGoBack()) {
@@ -355,7 +432,7 @@ fun WebApp(content: String) {
                         latched = pinned,
                     ) {
                         Icon(
-                            Icons.Filled.Star,
+                            Icons.Filled.Add,
                             contentDescription = if (pinned) "Unpin from Home" else "Pin to Home",
                             Modifier.size(24.dp),
                             tint = if (pinned) MaterialTheme.colorScheme.primary else LocalContentColor.current.copy(alpha = 0.65f),
@@ -374,7 +451,7 @@ fun WebApp(content: String) {
                         latched = desktopMode,
                     ) {
                         Icon(
-                            Icons.Filled.Info,
+                            Icons.Filled.Home,
                             contentDescription = "Desktop mode",
                             Modifier.size(24.dp),
                             tint = if (desktopMode) MaterialTheme.colorScheme.primary else LocalContentColor.current.copy(alpha = 0.7f),
@@ -504,8 +581,8 @@ fun WebApp(content: String) {
                 )
 
                 Box(modifier = Modifier.fillMaxSize()) {
-                    androidx.compose.animation.AnimatedVisibility(                            
-                           visible = showExitFullscreenPill,
+                    AnimatedVisibility(
+                        visible = showExitFullscreenPill,
                         enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
                         exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut(),
                         modifier = Modifier
@@ -534,6 +611,189 @@ fun WebApp(content: String) {
                                 fontWeight = FontWeight.SemiBold,
                                 color = Color.White,
                             )
+                        }
+                    }
+                }
+            }
+
+            // Bottom-to-up swipe zone for "Open Brightness Booster" pill
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .height(52.dp)
+                    .pointerInput(Unit) {
+                        var upwardDrag = 0f
+                        detectVerticalDragGestures(
+                            onDragStart = { upwardDrag = 0f },
+                            onVerticalDrag = { _, dragAmount ->
+                                if (dragAmount < 0f) {
+                                    upwardDrag += -dragAmount
+                                    if (upwardDrag > 24f && !showBrightnessBoosterSheet) {
+                                        showBrightnessPill = true
+                                        brightnessPillTriggerCount++
+                                    }
+                                }
+                            },
+                        )
+                    },
+            )
+
+            AnimatedVisibility(
+                visible = showBrightnessPill && !showBrightnessBoosterSheet,
+                enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+                exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 14.dp),
+            ) {
+                Row(
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .background(Color(0xEE14161D))
+                        .border(1.dp, Color.White.copy(alpha = 0.28f), CircleShape)
+                        .clickable {
+                            showBrightnessPill = false
+                            showBrightnessBoosterSheet = true
+                            boosterInteractionTick++
+                        }
+                        .padding(horizontal = 18.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Star,
+                        contentDescription = "Open Brightness Booster",
+                        tint = Color(0xFFFFC107),
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Text(
+                        text = "Open Brightness Booster",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color.White,
+                    )
+                }
+            }
+
+            AnimatedVisibility(
+                visible = showBrightnessBoosterSheet,
+                enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+                exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+                modifier = Modifier.fillMaxSize(),
+            ) {
+                val pct = (brightnessLevel * 100).toInt()
+                val boosted = brightnessLevel >= 0.85f
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.45f))
+                        .clickable { showBrightnessBoosterSheet = false },
+                    contentAlignment = Alignment.BottomCenter,
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth(0.92f)
+                            .padding(bottom = 20.dp)
+                            .clip(RoundedCornerShape(24.dp))
+                            .background(Color(0xF2181B24))
+                            .border(1.dp, Color.White.copy(alpha = 0.2f), RoundedCornerShape(24.dp))
+                            .clickable(enabled = false) {}
+                            .padding(18.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp),
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Star,
+                                    contentDescription = null,
+                                    tint = if (boosted) Color(0xFFFFC107) else Color.White,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                                Text(
+                                    text = if (boosted) "Brightness Booster · $pct% (BOOST)" else "Brightness Booster · $pct%",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color.White,
+                                )
+                            }
+                            Icon(
+                                imageVector = Icons.Filled.Close,
+                                contentDescription = "Close",
+                                tint = Color.White.copy(alpha = 0.8f),
+                                modifier = Modifier
+                                    .size(22.dp)
+                                    .clickable { showBrightnessBoosterSheet = false },
+                            )
+                        }
+
+                        Slider(
+                            value = brightnessLevel,
+                            onValueChange = { newVal ->
+                                brightnessLevel = newVal.coerceIn(0.1f, 1.0f)
+                                applyWindowBrightness(context, brightnessLevel)
+                                boosterInteractionTick++
+                            },
+                            valueRange = 0.1f..1.0f,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(CircleShape)
+                                    .background(Color.White.copy(alpha = 0.14f))
+                                    .clickable {
+                                        brightnessLevel = 0.5f
+                                        applyWindowBrightness(context, brightnessLevel)
+                                        boosterInteractionTick++
+                                    }
+                                    .padding(vertical = 10.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text("50%", color = Color.White, fontWeight = FontWeight.Medium)
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(CircleShape)
+                                    .background(Color.White.copy(alpha = 0.14f))
+                                    .clickable {
+                                        brightnessLevel = 0.8f
+                                        applyWindowBrightness(context, brightnessLevel)
+                                        boosterInteractionTick++
+                                    }
+                                    .padding(vertical = 10.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text("80%", color = Color.White, fontWeight = FontWeight.Medium)
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFFFFC107))
+                                    .clickable {
+                                        brightnessLevel = 1.0f
+                                        applyWindowBrightness(context, brightnessLevel)
+                                        boosterInteractionTick++
+                                    }
+                                    .padding(vertical = 10.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text("100% Boost", color = Color(0xFF14161D), fontWeight = FontWeight.Bold)
+                            }
                         }
                     }
                 }

@@ -35,6 +35,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -117,6 +118,8 @@ private fun openMobileDataOrNetworkSettings(context: Context) {
 private fun BreadcrumbBar(navigator: CarNavigator) {
     val trail = navigator.trail
     if (trail.size <= 1) return
+    val darkOutside = LocalDarkOutside.current
+    val fg = if (darkOutside) Color.White else Color(0xFF141722)
     Row(
         Modifier.fillMaxWidth().height(38.dp).padding(start = 6.dp, end = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -135,7 +138,7 @@ private fun BreadcrumbBar(navigator: CarNavigator) {
                 crumb.shown(),
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = if (isLast) FontWeight.SemiBold else FontWeight.Normal,
-                color = if (isLast) Color(0xFF141722) else Color(0xFF141722).copy(alpha = 0.7f),
+                color = if (isLast) fg else fg.copy(alpha = 0.7f),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = if (isLast) Modifier else Modifier
@@ -147,7 +150,7 @@ private fun BreadcrumbBar(navigator: CarNavigator) {
                 Text(
                     "›",
                     style = MaterialTheme.typography.labelLarge,
-                    color = Color(0xFF141722).copy(alpha = 0.6f),
+                    color = fg.copy(alpha = 0.6f),
                     modifier = Modifier.padding(horizontal = 2.dp),
                 )
             }
@@ -156,12 +159,17 @@ private fun BreadcrumbBar(navigator: CarNavigator) {
 }
 
 /**
- * Left-side CarPlay-style vertical light frosted glass sidebar: clock & battery/weather at top,
- * default + user-pinned app shortcuts in the middle, and network/data + Home/Apps toggle at bottom.
+ * Left-side CarPlay-style vertical frosted glass sidebar: clock & battery/weather at top,
+ * default + user-pinned app shortcuts in the middle, and network/data + Settings/Apps/Home at bottom.
  */
 @Composable
 internal fun CarNavBar(navigator: CarNavigator, modifier: Modifier = Modifier) {
     val context = LocalContext.current
+    val darkOutside = LocalDarkOutside.current
+    val sidebarBg = if (darkOutside) Color(0xCC151822) else Color.White.copy(alpha = 0.68f)
+    val sidebarFg = if (darkOutside) Color.White else Color(0xFF141722)
+    val sidebarBorder = if (darkOutside) Color.White.copy(alpha = 0.16f) else Color.White.copy(alpha = 0.45f)
+
     val battery by CarEnvironment.battery.collectAsState()
     val now by rememberNow()
     val weather by Weather.state.collectAsState()
@@ -199,9 +207,9 @@ internal fun CarNavBar(navigator: CarNavigator, modifier: Modifier = Modifier) {
         modifier = modifier
             .width(CARPLAY_SIDEBAR_WIDTH)
             .fillMaxHeight()
-            .border(width = 1.dp, color = Color.White.copy(alpha = 0.45f)),
-        color = Color.White.copy(alpha = 0.68f),
-        contentColor = Color(0xFF141722),
+            .border(width = 1.dp, color = sidebarBorder),
+        color = sidebarBg,
+        contentColor = sidebarFg,
     ) {
         Column(
             Modifier.fillMaxSize().padding(vertical = 10.dp, horizontal = 8.dp),
@@ -231,7 +239,7 @@ internal fun CarNavBar(navigator: CarNavigator, modifier: Modifier = Modifier) {
                         DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(now)).replace(" AM", "").replace(" PM", ""),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF141722),
+                        color = sidebarFg,
                         maxLines = 1,
                     )
                     Row(
@@ -243,7 +251,7 @@ internal fun CarNavBar(navigator: CarNavigator, modifier: Modifier = Modifier) {
                                 "${battery.percent}%",
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.SemiBold,
-                                color = Color(0xFF141722).copy(alpha = 0.78f),
+                                color = sidebarFg.copy(alpha = 0.78f),
                                 maxLines = 1,
                             )
                             if (battery.charging) {
@@ -255,7 +263,7 @@ internal fun CarNavBar(navigator: CarNavigator, modifier: Modifier = Modifier) {
                                 "${w.temp}°",
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.SemiBold,
-                                color = Color(0xFF141722).copy(alpha = 0.78f),
+                                color = sidebarFg.copy(alpha = 0.78f),
                                 maxLines = 1,
                             )
                         }
@@ -273,7 +281,7 @@ internal fun CarNavBar(navigator: CarNavigator, modifier: Modifier = Modifier) {
                 }
             }
 
-            // Bottom: Network/Data status + Home / Apps toggle + Assistant
+            // Bottom: Network/Data status + Settings + Apps + Home
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -282,6 +290,14 @@ internal fun CarNavBar(navigator: CarNavigator, modifier: Modifier = Modifier) {
                 if (navMic) {
                     NavAssistantIcon()
                 }
+                NavItem(
+                    icon = Icons.Filled.Settings,
+                    selected = navigator.current == CarScreen.Settings,
+                    onClick = {
+                        if (navigator.current == CarScreen.Settings) navigator.home()
+                        else navigator.settings()
+                    },
+                )
                 NavItem(
                     icon = MediaIcons.Apps,
                     selected = navigator.current == CarScreen.Apps,
@@ -395,11 +411,15 @@ private fun NavAppIcon(
     onLongClick: () -> Unit,
     onClick: () -> Unit,
 ) {
-    val highlight = if (showing) Color.White.copy(alpha = 0.85f) else Color.White.copy(alpha = 0.45f)
+    val darkOutside = LocalDarkOutside.current
+    val baseBg = if (darkOutside) Color.White.copy(alpha = 0.14f) else Color.White.copy(alpha = 0.45f)
+    val activeBg = if (darkOutside) Color.White.copy(alpha = 0.28f) else Color.White.copy(alpha = 0.85f)
+    val fg = if (darkOutside) Color.White else Color(0xFF141722)
+    val highlight = if (showing) activeBg else baseBg
     GsIconBox(
         onClick,
         Modifier.size(48.dp),
-        colors = GsColors(highlight, Color(0xFF141722)),
+        colors = GsColors(highlight, fg),
         latched = showing,
         shape = RoundedCornerShape(13.dp),
         onLongClick = onLongClick,
@@ -434,8 +454,11 @@ private fun NavAppIcon(
 
 @Composable
 private fun navColors(selected: Boolean): GsColors {
+    val darkOutside = LocalDarkOutside.current
+    val unselectedBg = if (darkOutside) Color.White.copy(alpha = 0.14f) else Color.White.copy(alpha = 0.45f)
+    val unselectedFg = if (darkOutside) Color.White else Color(0xFF141722)
     return if (selected) GsColors(Color(0xFF007AFF), Color.White)
-    else GsColors(Color.White.copy(alpha = 0.45f), Color(0xFF141722))
+    else GsColors(unselectedBg, unselectedFg)
 }
 
 @Composable
@@ -704,75 +727,4 @@ private fun NavNowPlaying(navigator: CarNavigator, selected: Boolean, modifier: 
                 )
             }
             if (now.durationMs > 0) {
-                Box(Modifier.matchParentSize(), contentAlignment = Alignment.BottomStart) {
-                    Box(
-                        Modifier
-                            .fillMaxWidth((position.toFloat() / now.durationMs).coerceIn(0f, 1f))
-                            .height(2.dp)
-                            .background(onPill.copy(alpha = 0.7f)),
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun DockedPill(
-    navigator: CarNavigator,
-    now: app.seb3thehacker.gearslip.media.NowPlaying,
-    selected: Boolean,
-    modifier: Modifier,
-) {
-    val scheme = MaterialTheme.colorScheme
-    val playerLeft by CarSettings.playerLeft.collectAsState()
-    Box(modifier.fillMaxWidth(), contentAlignment = if (playerLeft) Alignment.CenterStart else Alignment.CenterEnd) {
-        Surface(
-            modifier = Modifier.height(44.dp),
-            shape = RoundedCornerShape(14.dp),
-            color = if (selected) scheme.primaryContainer else scheme.secondaryContainer,
-            contentColor = if (selected) scheme.onPrimaryContainer else scheme.onSecondaryContainer,
-        ) {
-            PlayModeRow(
-                now,
-                CarServices.media,
-                size = 36.dp,
-                modifier = Modifier.fillMaxHeight().padding(horizontal = 4.dp),
-                arrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                GsIconButton(
-                    ImageVector.vectorResource(R.drawable.lyrics_24),
-                    stringResource(R.string.storage_lyrics),
-                    navigator::showSideLyrics,
-                    size = 36.dp,
-                    iconSize = 20.dp,
-                )
-                GsIconButton(
-                    if (playerLeft) MediaIcons.DockLeftOpen else MediaIcons.DockRightOpen,
-                    stringResource(R.string.navbar_close_panel),
-                    navigator::togglePlayerDock,
-                    size = 36.dp,
-                    iconSize = 22.dp,
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun ChargingGlyph(modifier: Modifier = Modifier, tint: Color = Color(0xFF141722).copy(alpha = 0.78f)) {
-    Canvas(modifier) {
-        val w = size.width
-        val h = size.height
-        val bolt = Path().apply {
-            moveTo(w * 0.58f, 0f)
-            lineTo(w * 0.12f, h * 0.58f)
-            lineTo(w * 0.46f, h * 0.58f)
-            lineTo(w * 0.42f, h)
-            lineTo(w * 0.88f, h * 0.40f)
-            lineTo(w * 0.54f, h * 0.40f)
-            close()
-        }
-        drawPath(bolt, tint)
-    }
-}
+                Box(Modifier.matchParentSize(), contentAlignment = Alignment.BottomStart)

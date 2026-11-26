@@ -37,7 +37,10 @@ object CarData {
         val location: Location? = null,
         /** When each kind last changed, by its SensorBatch field number. */
         val updatedAt: Map<Int, Long> = emptyMap(),
-    )
+    ) {
+        val speedKmh: Float?
+            get() = speedMps?.takeIf { it.isFinite() }?.times(3.6f)
+    }
 
     /** What the car says it is, from its service discovery: model and year. It names no maker. */
     class Model(val name: String, val year: Int?)
@@ -62,33 +65,48 @@ object CarData {
             val f = Wire.fields(bytes)
             val lat = Wire.varint(f, 2)?.toInt()
             val lon = Wire.varint(f, 3)?.toInt()
-            if (lat != null && lon != null) {
+            if (lat != null && lon != null && lat in -900_000_000..900_000_000 && lon in -1_800_000_000..1_800_000_000) {
                 s = s.copy(
                     location = Location(
-                        lat / 1e7, lon / 1e7,
-                        Wire.varint(f, 4)?.let { it / 1e3f },
-                        Wire.varint(f, 5)?.let { it.toInt() / 1e2 },
-                        Wire.varint(f, 6)?.let { it.toInt() / 1e3f },
-                        Wire.varint(f, 7)?.let { it.toInt() / 1e6f },
+                        latitude = lat / 1e7,
+                        longitude = lon / 1e7,
+                        accuracyMeters = Wire.varint(f, 4)?.let { it / 1e3f },
+                        altitudeMeters = Wire.varint(f, 5)?.let { it.toInt() / 1e2 },
+                        speedMps = Wire.varint(f, 6)?.let { it.toInt() / 1e3f },
+                        bearingDegrees = Wire.varint(f, 7)?.let { it.toInt() / 1e6f },
                     ),
                 )
                 touched += LOCATION
             }
         }
         Wire.allBytes(batch, COMPASS).lastOrNull()?.let { bytes ->
-            Wire.varint(Wire.fields(bytes), 1)?.let { s = s.copy(compassDegrees = it.toInt() / 1e6f); touched += COMPASS }
+            Wire.varint(Wire.fields(bytes), 1)?.let {
+                val deg = ((it.toInt() / 1e6f) % 360f + 360f) % 360f
+                s = s.copy(compassDegrees = deg)
+                touched += COMPASS
+            }
         }
         Wire.allBytes(batch, SPEED).lastOrNull()?.let { bytes ->
-            Wire.varint(Wire.fields(bytes), 1)?.let { s = s.copy(speedMps = it.toInt() / 1e3f); touched += SPEED }
+            Wire.varint(Wire.fields(bytes), 1)?.let {
+                val spd = (it.toInt() / 1e3f).coerceAtLeast(0f)
+                s = s.copy(speedMps = spd)
+                touched += SPEED
+            }
         }
         Wire.allBytes(batch, ODOMETER).lastOrNull()?.let { bytes ->
-            Wire.varint(Wire.fields(bytes), 1)?.let { s = s.copy(odometerKm = it.toInt() / 10f); touched += ODOMETER }
+            Wire.varint(Wire.fields(bytes), 1)?.let {
+                val odo = (it.toInt() / 10f).coerceAtLeast(0f)
+                s = s.copy(odometerKm = odo)
+                touched += ODOMETER
+            }
         }
         Wire.allBytes(batch, FUEL).lastOrNull()?.let { bytes ->
             val f = Wire.fields(bytes)
+            val rawLevel = Wire.varint(f, 1)?.toInt()?.coerceIn(0, 100)
+            val rawRange = Wire.varint(f, 2)?.toInt()?.coerceAtLeast(0)
             s = s.copy(
-                fuelPercent = Wire.varint(f, 1)?.toInt() ?: s.fuelPercent,
-                rangeKm = Wire.varint(f, 2)?.toInt() ?: s.rangeKm,
+                fuelPercent = rawLevel ?: s.fuelPercent,
+                rangeKm = rawRange ?: s.rangeKm,
                 fuelLow = Wire.varint(f, 3)?.let { it != 0L } ?: s.fuelLow,
             )
             touched += FUEL
