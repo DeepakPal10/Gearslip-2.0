@@ -474,13 +474,13 @@ fun WebApp(content: String) {
     Column(Modifier.fillMaxSize()) {
         if (!hideChromeForFullscreen) {
             ScreenHeader(pageTitle.takeUnless { atStart }.orEmpty().ifEmpty { stringResource(R.string.app_browser) }, Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                val url = pageUrl
-                if (!atStart && url != null && url.startsWith("http")) {
-                    val saved = remember(bookmarks, url) { BrowserSettings.isBookmarked(url) }
-                    val pinned = remember(pinnedSites, url) { PinnedWebSites.isPinned(url) }
+                val activeUrl = pageUrl
+                if (!atStart && activeUrl != null && activeUrl.startsWith("http")) {
+                    val saved = remember(bookmarks, activeUrl) { BrowserSettings.isBookmarked(activeUrl) }
+                    val pinned = remember(pinnedSites, activeUrl) { PinnedWebSites.isPinned(activeUrl) }
                     GsIconBox(
                         {
-                            if (saved) BrowserSettings.removeBookmark(url) else BrowserSettings.addBookmark(pageTitle, url)
+                            if (saved) BrowserSettings.removeBookmark(activeUrl) else BrowserSettings.addBookmark(pageTitle, activeUrl)
                             CarToasts.show(BrowserSettings, context.getString(if (saved) R.string.web_bookmark_removed else R.string.web_bookmark_added), CarToast.LENGTH_SHORT)
                         },
                         Modifier.size(48.dp),
@@ -498,9 +498,9 @@ fun WebApp(content: String) {
                         {
                             val currentFavicon = pageIcon ?: web?.favicon
                             val done = if (pinned) {
-                                PinnedWebSites.unpin(context, url)
+                                PinnedWebSites.unpin(context, activeUrl)
                             } else {
-                                PinnedWebSites.pin(context, pageTitle, url, currentFavicon)
+                                PinnedWebSites.pin(context, pageTitle, activeUrl, currentFavicon)
                             }
                             if (done) {
                                 val msg = if (pinned) "Unpinned from Home" else "Pinned to Home"
@@ -555,8 +555,8 @@ fun WebApp(content: String) {
         Box(Modifier.weight(1f).fillMaxSize()) {
             AndroidView(
                 modifier = Modifier.fillMaxSize(),
-                factory = { context ->
-                    WebView(context).apply {
+                factory = { webViewContext ->
+                    WebView(webViewContext).apply {
                         val documentUrl = AtomicReference<String?>(null)
                         CosmeticFilterBridge.attach(this)
                         defaultUserAgent = settings.userAgentString
@@ -618,4 +618,264 @@ fun WebApp(content: String) {
                         web = this
                     }
                 },
-                update = { it.settings.isAlgorithmicDarkening
+                update = { wv -> wv.settings.isAlgorithmicDarkeningAllowed = darkOutside },
+                onRelease = { wv -> wv.destroy() },
+            )
+            if (atStart) {
+                Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
+                    BrowserStartPage(
+                        onOpen = open,
+                        onSearch = {
+                            fieldText = null
+                            address = ""
+                        },
+                        onAdd = { newBookmark = "https://" },
+                    )
+                }
+            }
+            pageFullscreen?.let { (view, _) ->
+                androidx.compose.runtime.key(view) {
+                    AndroidView(
+                        factory = { fsContext ->
+                            FrameLayout(fsContext).apply {
+                                setBackgroundColor(android.graphics.Color.BLACK)
+                                (view.parent as? ViewGroup)?.removeView(view)
+                                addView(view, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+                            }
+                        },
+                        modifier = Modifier.fillMaxSize(),
+                        onRelease = { it.removeAllViews() },
+                    )
+                }
+            }
+
+            if (hideChromeForFullscreen) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .fillMaxWidth()
+                        .height(52.dp)
+                        .pointerInput(Unit) {
+                            var totalDragY = 0f
+                            detectVerticalDragGestures(
+                                onDragStart = { totalDragY = 0f },
+                                onVerticalDrag = { _, dragAmount ->
+                                    totalDragY += dragAmount
+                                    if (totalDragY > 24f && !showExitFullscreenPill) {
+                                        showExitFullscreenPill = true
+                                        exitPillTriggerCount++
+                                    }
+                                },
+                            )
+                        },
+                )
+
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = showExitFullscreenPill,
+                    enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
+                    exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut(),
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 14.dp),
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .background(Color(0xDD14161D))
+                            .border(1.dp, Color.White.copy(alpha = 0.28f), CircleShape)
+                            .clickable { exitAllFullscreen() }
+                            .padding(horizontal = 18.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Close,
+                            contentDescription = "Exit fullscreen",
+                            tint = Color.White,
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Text(
+                            text = "Exit fullscreen",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.White,
+                        )
+                    }
+                }
+            }
+
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .height(52.dp)
+                    .pointerInput(Unit) {
+                        var upwardDrag = 0f
+                        detectVerticalDragGestures(
+                            onDragStart = { upwardDrag = 0f },
+                            onVerticalDrag = { _, dragAmount ->
+                                if (dragAmount < 0f) {
+                                    upwardDrag += -dragAmount
+                                    if (upwardDrag > 24f && !showBrightnessBoosterSheet) {
+                                        showBrightnessPill = true
+                                        brightnessPillTriggerCount++
+                                    }
+                                }
+                            },
+                        )
+                    },
+            )
+
+            androidx.compose.animation.AnimatedVisibility(
+                visible = showBrightnessPill && !showBrightnessBoosterSheet,
+                enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+                exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 14.dp),
+            ) {
+                Row(
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .background(Color(0xEE14161D))
+                        .border(1.dp, Color.White.copy(alpha = 0.28f), CircleShape)
+                        .clickable {
+                            showBrightnessPill = false
+                            showBrightnessBoosterSheet = true
+                            boosterInteractionTick++
+                        }
+                        .padding(horizontal = 18.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Star,
+                        contentDescription = "Display Brightness",
+                        tint = Color(0xFFFFC107),
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Text(
+                        text = "Display Brightness",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color.White,
+                    )
+                }
+            }
+
+            androidx.compose.animation.AnimatedVisibility(
+                visible = showBrightnessBoosterSheet,
+                enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+                exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+            ) {
+                val pct = (brightnessLevel * 100).toInt()
+                val isMax = brightnessLevel >= 0.99f
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.45f))
+                        .clickable { showBrightnessBoosterSheet = false },
+                    contentAlignment = Alignment.BottomCenter,
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth(0.92f)
+                            .padding(bottom = 20.dp)
+                            .clip(RoundedCornerShape(24.dp))
+                            .background(Color(0xF2181B24))
+                            .border(1.dp, Color.White.copy(alpha = 0.2f), RoundedCornerShape(24.dp))
+                            .clickable(enabled = false) {}
+                            .padding(18.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp),
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Star,
+                                    contentDescription = null,
+                                    tint = if (isMax) Color(0xFFFFC107) else Color.White,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                                Text(
+                                    text = if (isMax) "Screen Brightness · $pct% (MAX)" else "Screen Brightness · $pct%",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color.White,
+                                )
+                            }
+                            Icon(
+                                imageVector = Icons.Filled.Close,
+                                contentDescription = "Close",
+                                tint = Color.White.copy(alpha = 0.8f),
+                                modifier = Modifier
+                                    .size(22.dp)
+                                    .clickable { showBrightnessBoosterSheet = false },
+                            )
+                        }
+
+                        Slider(
+                            value = brightnessLevel,
+                            onValueChange = { newVal ->
+                                brightnessLevel = newVal.coerceIn(0.1f, 1.0f)
+                                applyInfotainmentBrightness(context, hostView, brightnessLevel)
+                                boosterInteractionTick++
+                            },
+                            valueRange = 0.1f..1.0f,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(CircleShape)
+                                    .background(Color.White.copy(alpha = 0.14f))
+                                    .clickable {
+                                        brightnessLevel = 0.4f
+                                        applyInfotainmentBrightness(context, hostView, brightnessLevel)
+                                        boosterInteractionTick++
+                                    }
+                                    .padding(vertical = 10.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text("40% Dim", color = Color.White, fontWeight = FontWeight.Medium)
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(CircleShape)
+                                    .background(Color.White.copy(alpha = 0.14f))
+                                    .clickable {
+                                        brightnessLevel = 0.7f
+                                        applyInfotainmentBrightness(context, hostView, brightnessLevel)
+                                        boosterInteractionTick++
+                                    }
+                                    .padding(vertical = 10.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text("70%", color = Color.White, fontWeight = FontWeight.Medium)
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFFFFC107))
+                                    .clickable {
+                                        brightnessLevel = 1.0f
+                                        applyInfotainmentBrightness(context, hostView, brightnessLevel)
+                                        boosterInteractionTick++
+                                    }
+                                    .padding(vertical = 10.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text("Max (100%)", color = Color(0xFF14161
