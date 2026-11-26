@@ -6,6 +6,7 @@ import android.content.ContextWrapper
 import android.graphics.Bitmap
 import android.os.Handler
 import android.os.Looper
+import android.provider.Settings
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.JavascriptInterface
@@ -68,6 +69,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -118,7 +120,7 @@ internal object PinnedWebSites {
 
     private var initialized = false
 
-    private fun extractHost(url: String): String =
+    fun extractHost(url: String): String =
         runCatching { android.net.Uri.parse(url).host?.removePrefix("www.").orEmpty() }.getOrDefault("")
 
     fun ensureLoaded(context: Context) {
@@ -166,12 +168,22 @@ internal object PinnedWebSites {
         return sitesFlow.value.any { it.url == target }
     }
 
-    fun pin(context: Context, title: String, url: String): Boolean {
+    fun pin(context: Context, title: String, url: String, favicon: Bitmap? = null): Boolean {
         ensureLoaded(context)
         val cleanUrl = url.trim()
         if (!cleanUrl.startsWith("http://") && !cleanUrl.startsWith("https://")) return false
         val cleanHost = extractHost(cleanUrl)
-        val cleanTitle = title.trim().ifEmpty { cleanHost.ifEmpty { cleanUrl } }
+        val cleanTitle = title.trim()
+            .removePrefix("YouTube - ")
+            .removeSuffix(" - YouTube")
+            .trim()
+            .ifEmpty {
+                if (cleanHost.contains("youtube.com") || cleanHost == "youtu.be") "YouTube"
+                else cleanHost.ifEmpty { cleanUrl }
+            }
+        if (favicon != null && cleanHost.isNotEmpty()) {
+            runCatching { SiteIcons.save(context.applicationContext, cleanHost, favicon) }
+        }
         val current = sitesFlow.value.filterNot { it.url == cleanUrl }
         val updated = current + PinnedSite(title = cleanTitle, url = cleanUrl, host = cleanHost)
         sitesFlow.value = updated
@@ -222,11 +234,16 @@ internal object PinnedWebSites {
         return sitesFlow.value.map { site ->
             val cleanHost = site.host.ifEmpty { extractHost(site.url) }
             val imageBitmap = loadSavedIcon(context, cleanHost).toImageBitmapOrNull()
+            val glyph = if (cleanHost.contains("youtube.com") || cleanHost == "youtu.be") {
+                Icons.Filled.PlayArrow
+            } else {
+                Icons.Filled.Home
+            }
             Entry(
                 label = site.title,
                 icon = imageBitmap,
                 pinnedUrl = site.url,
-                fallbackGlyph = Icons.Filled.Home,
+                fallbackGlyph = glyph,
             )
         }
     }
@@ -255,13 +272,38 @@ private fun Context.findActivity(): Activity? {
     return null
 }
 
-private fun applyWindowBrightness(context: Context, level: Float) {
+/**
+ * Sets infotainment / host display brightness within its real hardware/window range (0.1f..1.0f).
+ */
+private fun applyInfotainmentBrightness(context: Context, rootView: View?, level: Float) {
     val clamped = level.coerceIn(0.1f, 1.0f)
-    val activity = context.findActivity() ?: return
+    val activity = context.findActivity()
+    activity?.window?.let { win ->
+        runCatching {
+            val attrs = win.attributes
+            attrs.screenBrightness = clamped
+            win.attributes = attrs
+        }
+    }
+    rootView?.context?.findActivity()?.window?.let { hostWin ->
+        if (hostWin !== activity?.window) {
+            runCatching {
+                val attrs = hostWin.attributes
+                attrs.screenBrightness = clamped
+                hostWin.attributes = attrs
+            }
+        }
+    }
     runCatching {
-        val attrs = activity.window.attributes
-        attrs.screenBrightness = clamped
-        activity.window.attributes = attrs
+        val targetContext = activity ?: context
+        if (Settings.System.canWrite(targetContext)) {
+            val sysVal = (clamped * 255f).toInt().coerceIn(1, 255)
+            Settings.System.putInt(
+                targetContext.contentResolver,
+                Settings.System.SCREEN_BRIGHTNESS,
+                sysVal,
+            )
+        }
     }
 }
 
@@ -284,6 +326,7 @@ fun WebApp(content: String) {
     var showBrightnessBoosterSheet by remember { mutableStateOf(false) }
     var boosterInteractionTick by remember { mutableIntStateOf(0) }
     var pageTitle by remember { mutableStateOf("") }
+    var pageIcon by remember { mutableStateOf<Bitmap?>(null) }
     var canGoForward by remember { mutableStateOf(false) }
     var address by remember { mutableStateOf<String?>(null) }
     var newBookmark by remember { mutableStateOf<String?>(null) }
@@ -293,11 +336,21 @@ fun WebApp(content: String) {
     val pinnedSites by PinnedWebSites.sites.collectAsState()
     val pendingPinnedUrl by PinnedWebSites.pendingOpenUrl.collectAsState()
     val context = LocalContext.current
+    val hostView = LocalView.current
     var brightnessLevel by remember {
         mutableFloatStateOf(
             runCatching {
                 val cur = context.findActivity()?.window?.attributes?.screenBrightness ?: -1f
-                if (cur in 0.1f..1.0f) cur else 0.75f
+                if (cur in 0.1f..1.0f) {
+                    cur
+                } else {
+                    val sys = Settings.System.getInt(
+                        context.contentResolver,
+                        Settings.System.SCREEN_BRIGHTNESS,
+                        190,
+                    )
+                    (sys / 255f).coerceIn(0.1f, 1.0f)
+                }
             }.getOrDefault(0.75f),
         )
     }
@@ -352,6 +405,7 @@ fun WebApp(content: String) {
 
     val open: (String) -> Unit = { url ->
         atStart = false
+        pageIcon = null
         web?.loadUrl(url)
     }
 
@@ -367,6 +421,7 @@ fun WebApp(content: String) {
         if (content.isBlank()) {
             atStart = true
             pageTitle = ""
+            pageIcon = null
         } else {
             web?.let { view -> loadContent(view, content) }
         }
@@ -427,7 +482,12 @@ fun WebApp(content: String) {
                     }
                     GsIconBox(
                         {
-                            val done = if (pinned) PinnedWebSites.unpin(context, url) else PinnedWebSites.pin(context, pageTitle, url)
+                            val currentFavicon = pageIcon ?: web?.favicon
+                            val done = if (pinned) {
+                                PinnedWebSites.unpin(context, url)
+                            } else {
+                                PinnedWebSites.pin(context, pageTitle, url, currentFavicon)
+                            }
                             if (done) {
                                 val msg = if (pinned) "Unpinned from Home" else "Pinned to Home"
                                 CarToasts.show(BrowserSettings, msg, CarToast.LENGTH_SHORT)
@@ -499,6 +559,13 @@ fun WebApp(content: String) {
                             canGoForward = view.canGoForward()
                             pageUrl = view.url
                             pageTitle = view.title.orEmpty().takeUnless { it.startsWith("http") || it == "about:blank" }.orEmpty()
+                            view.favicon?.let { fav ->
+                                pageIcon = fav
+                                val host = view.url?.let { PinnedWebSites.extractHost(it) }.orEmpty()
+                                if (host.isNotEmpty()) {
+                                    runCatching { SiteIcons.save(view.context, host, fav) }
+                                }
+                            }
                         }
                         webChromeClient = object : WebChromeClient() {
                             override fun onReceivedTitle(view: WebView?, title: String?) {
@@ -506,8 +573,11 @@ fun WebApp(content: String) {
                             }
 
                             override fun onReceivedIcon(view: WebView?, icon: Bitmap?) {
-                                val host = view?.url?.let { runCatching { android.net.Uri.parse(it).host }.getOrNull() }?.removePrefix("www.")
-                                if (icon != null && host != null) SiteIcons.save(view.context, host, icon)
+                                pageIcon = icon
+                                val host = view?.url?.let { PinnedWebSites.extractHost(it) }.orEmpty()
+                                if (icon != null && host.isNotEmpty()) {
+                                    runCatching { SiteIcons.save(view.context, host, icon) }
+                                }
                             }
 
                             override fun onShowCustomView(view: View, callback: CustomViewCallback) {
@@ -666,12 +736,12 @@ fun WebApp(content: String) {
                 ) {
                     Icon(
                         imageVector = Icons.Filled.Star,
-                        contentDescription = "Open Brightness Booster",
+                        contentDescription = "Display Brightness",
                         tint = Color(0xFFFFC107),
                         modifier = Modifier.size(18.dp),
                     )
                     Text(
-                        text = "Open Brightness Booster",
+                        text = "Display Brightness",
                         style = MaterialTheme.typography.labelLarge,
                         fontWeight = FontWeight.SemiBold,
                         color = Color.White,
@@ -685,7 +755,7 @@ fun WebApp(content: String) {
                 exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
             ) {
                 val pct = (brightnessLevel * 100).toInt()
-                val boosted = brightnessLevel >= 0.85f
+                val isMax = brightnessLevel >= 0.99f
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -716,11 +786,11 @@ fun WebApp(content: String) {
                                 Icon(
                                     imageVector = Icons.Filled.Star,
                                     contentDescription = null,
-                                    tint = if (boosted) Color(0xFFFFC107) else Color.White,
+                                    tint = if (isMax) Color(0xFFFFC107) else Color.White,
                                     modifier = Modifier.size(20.dp),
                                 )
                                 Text(
-                                    text = if (boosted) "Brightness Booster · $pct% (BOOST)" else "Brightness Booster · $pct%",
+                                    text = if (isMax) "Screen Brightness · $pct% (MAX)" else "Screen Brightness · $pct%",
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.SemiBold,
                                     color = Color.White,
@@ -740,7 +810,7 @@ fun WebApp(content: String) {
                             value = brightnessLevel,
                             onValueChange = { newVal ->
                                 brightnessLevel = newVal.coerceIn(0.1f, 1.0f)
-                                applyWindowBrightness(context, brightnessLevel)
+                                applyInfotainmentBrightness(context, hostView, brightnessLevel)
                                 boosterInteractionTick++
                             },
                             valueRange = 0.1f..1.0f,
@@ -757,14 +827,14 @@ fun WebApp(content: String) {
                                     .clip(CircleShape)
                                     .background(Color.White.copy(alpha = 0.14f))
                                     .clickable {
-                                        brightnessLevel = 0.5f
-                                        applyWindowBrightness(context, brightnessLevel)
+                                        brightnessLevel = 0.4f
+                                        applyInfotainmentBrightness(context, hostView, brightnessLevel)
                                         boosterInteractionTick++
                                     }
                                     .padding(vertical = 10.dp),
                                 contentAlignment = Alignment.Center,
                             ) {
-                                Text("50%", color = Color.White, fontWeight = FontWeight.Medium)
+                                Text("40% Dim", color = Color.White, fontWeight = FontWeight.Medium)
                             }
                             Box(
                                 modifier = Modifier
@@ -772,14 +842,14 @@ fun WebApp(content: String) {
                                     .clip(CircleShape)
                                     .background(Color.White.copy(alpha = 0.14f))
                                     .clickable {
-                                        brightnessLevel = 0.8f
-                                        applyWindowBrightness(context, brightnessLevel)
+                                        brightnessLevel = 0.7f
+                                        applyInfotainmentBrightness(context, hostView, brightnessLevel)
                                         boosterInteractionTick++
                                     }
                                     .padding(vertical = 10.dp),
                                 contentAlignment = Alignment.Center,
                             ) {
-                                Text("80%", color = Color.White, fontWeight = FontWeight.Medium)
+                                Text("70%", color = Color.White, fontWeight = FontWeight.Medium)
                             }
                             Box(
                                 modifier = Modifier
@@ -788,13 +858,13 @@ fun WebApp(content: String) {
                                     .background(Color(0xFFFFC107))
                                     .clickable {
                                         brightnessLevel = 1.0f
-                                        applyWindowBrightness(context, brightnessLevel)
+                                        applyInfotainmentBrightness(context, hostView, brightnessLevel)
                                         boosterInteractionTick++
                                     }
                                     .padding(vertical = 10.dp),
                                 contentAlignment = Alignment.Center,
                             ) {
-                                Text("100% Boost", color = Color(0xFF14161D), fontWeight = FontWeight.Bold)
+                                Text("Max (100%)", color = Color(0xFF14161D), fontWeight = FontWeight.Bold)
                             }
                         }
                     }
