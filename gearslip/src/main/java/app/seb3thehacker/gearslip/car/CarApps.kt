@@ -24,32 +24,25 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Album
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Cloud
-import androidx.compose.material.icons.filled.DirectionsCar
-import androidx.compose.material.icons.filled.Explore
-import androidx.compose.material.icons.filled.Extension
-import androidx.compose.material.icons.filled.Gamepad
-import androidx.compose.material.icons.filled.Headphones
-import androidx.compose.material.icons.filled.LiveTv
-import androidx.compose.material.icons.filled.LocalFireDepartment
-import androidx.compose.material.icons.filled.Movie
-import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Mail
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Place
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Radio
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
-import androidx.compose.material.icons.filled.ShoppingBag
-import androidx.compose.material.icons.filled.Speed
-import androidx.compose.material.icons.filled.SportsEsports
 import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.filled.Theaters
-import androidx.compose.material.icons.filled.Tv
-import androidx.compose.material.icons.filled.VideogameAsset
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -143,30 +136,30 @@ internal fun ColorfulBuiltInIcon(
 
 private val HUB_CATALOG_ITEMS = listOf(
     // Streaming Platforms
-    HubCatalogItem("yt", "YouTube", "Videos & Live Streams", "Streaming", "4.8", "Web App", "https://m.youtube.com", Icons.Filled.PlayArrow, Color(0xFFFF1744), Color(0xFFB71C1C)),
-    HubCatalogItem("netflix", "Netflix", "Movies & Web Series", "Streaming", "4.7", "HD Stream", "https://www.netflix.com", Icons.Filled.Movie, Color(0xFFE50914), Color(0xFF8E0000)),
-    HubCatalogItem("prime", "Prime Video", "Originals & Live Sports", "Streaming", "4.6", "HD Stream", "https://www.primevideo.com", Icons.Filled.LiveTv, Color(0xFF00A8E1), Color(0xFF005B9F)),
-    HubCatalogItem("hotstar", "Disney+ Hotstar", "Cricket, Movies & Shows", "Streaming", "4.7", "Live TV", "https://www.hotstar.com", Icons.Filled.Star, Color(0xFF1565C0), Color(0xFF0D47A1)),
-    HubCatalogItem("jiocinema", "JioCinema", "IPL, Movies & Reality", "Streaming", "4.5", "Free HD", "https://www.jiocinema.com", Icons.Filled.Theaters, Color(0xFFD81B60), Color(0xFF880E4F)),
-    HubCatalogItem("sonyliv", "SonyLIV", "Sports & Originals", "Streaming", "4.4", "Stream", "https://www.sonyliv.com", Icons.Filled.Tv, Color(0xFF6A1B9A), Color(0xFF38006B)),
-    HubCatalogItem("zee5", "ZEE5", "Hindi & Regional Shows", "Streaming", "4.3", "Stream", "https://www.zee5.com", Icons.Filled.LiveTv, Color(0xFF512DA8), Color(0xFF311B92)),
-    HubCatalogItem("twitch", "Twitch", "Live Gaming Streams", "Streaming", "4.6", "Live", "https://m.twitch.tv", Icons.Filled.VideogameAsset, Color(0xFF9146FF), Color(0xFF5E35B1)),
+    HubCatalogItem("yt", "YouTube", "Videos & Live Streams", "Streaming", "4.8", "Web App", "https://m.youtube.com", Icons.AutoMirrored.Filled.ArrowForward, Color(0xFFFF1744), Color(0xFFB71C1C)),
+    HubCatalogItem("netflix", "Netflix", "Movies & Web Series", "Streaming", "4.7", "HD Stream", "https://www.netflix.com", Icons.Filled.Favorite, Color(0xFFE50914), Color(0xFF8E0000)),
+    HubCatalogItem("prime", "Prime Video", "Originals & Live Sports", "Streaming", "4.6", "HD Stream", "https://www.primevideo.com", Icons.Filled.Star, Color(0xFF00A8E1), Color(0xFF005B9F)),
+    HubCatalogItem("hotstar", "Disney+ Hotstar", "Cricket, Movies & Shows", "Streaming", "4.7", "Live TV", "https://www.hotstar.com", Icons.Filled.Home, Color(0xFF1565C0), Color(0xFF0D47A1)),
+    HubCatalogItem("jiocinema", "JioCinema", "IPL, Movies & Reality", "Streaming", "4.5", "Free HD", "https://www.jiocinema.com", Icons.Filled.Notifications, Color(0xFFD81B60), Color(0xFF880E4F)),
+    HubCatalogItem("sonyliv", "SonyLIV", "Sports & Originals", "Streaming", "4.4", "Stream", "https://www.sonyliv.com", Icons.Filled.Info, Color(0xFF6A1B9A), Color(0xFF38006B)),
+    HubCatalogItem("zee5", "ZEE5", "Hindi & Regional Shows", "Streaming", "4.3", "Stream", "https://www.zee5.com", Icons.Filled.Mail, Color(0xFF512DA8), Color(0xFF311B92)),
+    HubCatalogItem("twitch", "Twitch", "Live Gaming Streams", "Streaming", "4.6", "Live", "https://m.twitch.tv", Icons.Filled.Person, Color(0xFF9146FF), Color(0xFF5E35B1)),
 
     // Games
-    HubCatalogItem("minecraft", "Minecraft", "Sandbox Survival & SMP", "Games", "4.9", "Cloud / Web", "https://www.minecraft.net", Icons.Filled.Extension, Color(0xFF43A047), Color(0xFF1B5E20)),
-    HubCatalogItem("forza", "Forza Horizon", "Open-World Car Racing", "Games", "4.8", "Cloud Play", "https://www.xbox.com/play", Icons.Filled.DirectionsCar, Color(0xFFFF6D00), Color(0xFFE65100)),
-    HubCatalogItem("palworld", "Palworld", "Open-World Monster Survival", "Games", "4.7", "Cloud Play", "https://www.pocketpair.jp/palworld", Icons.Filled.Explore, Color(0xFF00ACC1), Color(0xFF006064)),
-    HubCatalogItem("greenhell", "Green Hell", "Amazon Rainforest Survival", "Games", "4.6", "Survival", "https://www.greenhell-game.com", Icons.Filled.LocalFireDepartment, Color(0xFF689F38), Color(0xFF33691E)),
-    HubCatalogItem("asphalt", "Asphalt Legends", "Arcade Street Racing", "Games", "4.6", "Racing", "https://www.gameloft.com", Icons.Filled.Speed, Color(0xFF2979FF), Color(0xFF1565C0)),
-    HubCatalogItem("poki", "Poki Car Arcade", "Instant Browser Mini-Games", "Games", "4.7", "Instant", "https://poki.com", Icons.Filled.SportsEsports, Color(0xFF00BFA5), Color(0xFF00695C)),
-    HubCatalogItem("chess", "Chess.com", "Online Chess & Puzzles", "Games", "4.8", "Board", "https://www.chess.com", Icons.Filled.Gamepad, Color(0xFF5D4037), Color(0xFF3E2723)),
-    HubCatalogItem("geforcenow", "GeForce NOW", "PC Cloud Gaming Hub", "Games", "4.7", "Cloud", "https://play.geforcenow.com", Icons.Filled.Cloud, Color(0xFF76B900), Color(0xFF33691E)),
+    HubCatalogItem("minecraft", "Minecraft", "Sandbox Survival & SMP", "Games", "4.9", "Cloud / Web", "https://www.minecraft.net", Icons.Filled.Add, Color(0xFF43A047), Color(0xFF1B5E20)),
+    HubCatalogItem("forza", "Forza Horizon", "Open-World Car Racing", "Games", "4.8", "Cloud Play", "https://www.xbox.com/play", Icons.Filled.Place, Color(0xFFFF6D00), Color(0xFFE65100)),
+    HubCatalogItem("palworld", "Palworld", "Open-World Monster Survival", "Games", "4.7", "Cloud Play", "https://www.pocketpair.jp/palworld", Icons.Filled.Refresh, Color(0xFF00ACC1), Color(0xFF006064)),
+    HubCatalogItem("greenhell", "Green Hell", "Amazon Rainforest Survival", "Games", "4.6", "Survival", "https://www.greenhell-game.com", Icons.Filled.Lock, Color(0xFF689F38), Color(0xFF33691E)),
+    HubCatalogItem("asphalt", "Asphalt Legends", "Arcade Street Racing", "Games", "4.6", "Racing", "https://www.gameloft.com", Icons.Filled.Search, Color(0xFF2979FF), Color(0xFF1565C0)),
+    HubCatalogItem("poki", "Poki Car Arcade", "Instant Browser Mini-Games", "Games", "4.7", "Instant", "https://poki.com", Icons.Filled.Share, Color(0xFF00BFA5), Color(0xFF00695C)),
+    HubCatalogItem("chess", "Chess.com", "Online Chess & Puzzles", "Games", "4.8", "Board", "https://www.chess.com", Icons.Filled.Settings, Color(0xFF5D4037), Color(0xFF3E2723)),
+    HubCatalogItem("geforcenow", "GeForce NOW", "PC Cloud Gaming Hub", "Games", "4.7", "Cloud", "https://play.geforcenow.com", Icons.Filled.Phone, Color(0xFF76B900), Color(0xFF33691E)),
 
     // Music & Radio
-    HubCatalogItem("ytmusic", "YouTube Music", "Songs, Mixes & Purane Gane", "Music", "4.8", "Audio", "https://music.youtube.com", Icons.Filled.MusicNote, Color(0xFFFF3D00), Color(0xFFBF360C)),
-    HubCatalogItem("spotify", "Spotify", "Music & Podcasts", "Music", "4.8", "Audio", "https://open.spotify.com", Icons.Filled.Album, Color(0xFF1DB954), Color(0xFF1B5E20)),
-    HubCatalogItem("jiosaavn", "JioSaavn", "Bollywood & Hindi Radio", "Music", "4.6", "Audio", "https://www.jiosaavn.com", Icons.Filled.Headphones, Color(0xFF26A69A), Color(0xFF004D40)),
-    HubCatalogItem("radio", "Radio Garden", "Live FM Stations Worldwide", "Music", "4.7", "FM Live", "https://radio.garden", Icons.Filled.Radio, Color(0xFF00838F), Color(0xFF004D40)),
+    HubCatalogItem("ytmusic", "YouTube Music", "Songs, Mixes & Purane Gane", "Music", "4.8", "Audio", "https://music.youtube.com", Icons.Filled.Favorite, Color(0xFFFF3D00), Color(0xFFBF360C)),
+    HubCatalogItem("spotify", "Spotify", "Music & Podcasts", "Music", "4.8", "Audio", "https://open.spotify.com", Icons.Filled.Star, Color(0xFF1DB954), Color(0xFF1B5E20)),
+    HubCatalogItem("jiosaavn", "JioSaavn", "Bollywood & Hindi Radio", "Music", "4.6", "Audio", "https://www.jiosaavn.com", Icons.Filled.Notifications, Color(0xFF26A69A), Color(0xFF004D40)),
+    HubCatalogItem("radio", "Radio Garden", "Live FM Stations Worldwide", "Music", "4.7", "FM Live", "https://radio.garden", Icons.Filled.Refresh, Color(0xFF00838F), Color(0xFF004D40)),
 )
 
 @Composable
@@ -211,7 +204,7 @@ internal fun AppHubStoreScreen() {
         ) {
             ColorfulBuiltInIcon(
                 idOrLabel = "allapps",
-                icon = Icons.Filled.ShoppingBag,
+                icon = Icons.Filled.Menu,
                 contentDescription = "App Hub",
                 boxSize = 42.dp,
                 iconSize = 22.dp,
@@ -392,7 +385,6 @@ internal fun AppHubStoreScreen() {
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    // Unique Gradient Icon per App
                     Box(
                         modifier = Modifier
                             .size(52.dp)
@@ -408,7 +400,6 @@ internal fun AppHubStoreScreen() {
                         )
                     }
 
-                    // Title + Subtitle + Rating Row
                     Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text(
                             text = item.title,
@@ -447,7 +438,6 @@ internal fun AppHubStoreScreen() {
                         }
                     }
 
-                    // Install -> Uninstall Button
                     Box(
                         modifier = Modifier
                             .clip(CircleShape)
@@ -500,7 +490,7 @@ object CarApps {
         CarApp("settings", "Settings", R.string.settings_title, Icons.Filled.Settings) {
             CarSettingsScreen()
         },
-        CarApp("allapps", "App Hub", R.string.app_all_apps, Icons.Filled.ShoppingBag) {
+        CarApp("allapps", "App Hub", R.string.app_all_apps, Icons.Filled.Menu) {
             AppHubStoreScreen()
         },
         CarApp("exit", "Exit", R.string.app_browser, Icons.Filled.Close) {
