@@ -304,4 +304,351 @@ internal fun AppHubStoreScreen() {
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             categories.forEach { cat ->
-                val
+                val isSelected = selectedCategory == cat
+                Box(
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .background(
+                            if (isSelected) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.surfaceVariant,
+                        )
+                        .clickable { selectedCategory = cat }
+                        .padding(horizontal = 16.dp, vertical = 7.dp),
+                ) {
+                    Text(
+                        text = cat,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                        color = if (isSelected) MaterialTheme.colorScheme.onPrimary
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+
+        if (selectedCategory == "All" && searchQuery.isBlank()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(
+                        Brush.horizontalGradient(
+                            listOf(Color(0xFFD50000), Color(0xFF1565C0), Color(0xFF00897B)),
+                        ),
+                    )
+                    .clickable {
+                        installedIds = installedIds + "yt"
+                        PinnedWebSites.pin(context, "YouTube", "https://m.youtube.com")
+                        PinnedWebSites.openInBrowser(navigator, "https://m.youtube.com")
+                    }
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "FEATURED FOR CAR",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White.copy(alpha = 0.85f),
+                    )
+                    Text(
+                        text = "YouTube, Netflix, Minecraft & Cloud Games",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                Spacer(Modifier.width(8.dp))
+                Box(
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .background(Color.White)
+                        .padding(horizontal = 14.dp, vertical = 7.dp),
+                ) {
+                    Text(
+                        text = "Launch YouTube",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFFD50000),
+                    )
+                }
+            }
+        }
+
+        LazyColumn(
+            contentPadding = PaddingValues(bottom = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            items(items = visibleItems, key = { it.id }) { item ->
+                val isInstalled = item.id in installedIds
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f))
+                        .border(
+                            width = 1.dp,
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
+                            shape = RoundedCornerShape(16.dp),
+                        )
+                        .clickable {
+                            installedIds = installedIds + item.id
+                            PinnedWebSites.pin(context, item.title, item.url)
+                            PinnedWebSites.openInBrowser(navigator, item.url)
+                        }
+                        .padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(52.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(Brush.verticalGradient(listOf(item.primaryColor, item.secondaryColor))),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = item.icon,
+                            contentDescription = item.title,
+                            tint = Color.White,
+                            modifier = Modifier.size(28.dp),
+                        )
+                    }
+
+                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(
+                            text = item.title,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            text = item.subtitle,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Text(
+                                text = "★ ${item.rating}",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                            Text(
+                                text = "• ${item.category}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Text(
+                                text = "• ${item.sizeTag}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .background(
+                                if (isInstalled) MaterialTheme.colorScheme.errorContainer
+                                else MaterialTheme.colorScheme.primary,
+                            )
+                            .clickable {
+                                if (isInstalled) {
+                                    installedIds = installedIds - item.id
+                                    PinnedWebSites.unpin(context, item.url)
+                                } else {
+                                    installedIds = installedIds + item.id
+                                    PinnedWebSites.pin(context, item.title, item.url)
+                                    PinnedWebSites.openInBrowser(navigator, item.url)
+                                }
+                            }
+                            .padding(horizontal = 16.dp, vertical = 9.dp),
+                    ) {
+                        Text(
+                            text = if (isInstalled) "Uninstall" else "Install",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isInstalled) MaterialTheme.colorScheme.onErrorContainer
+                            else MaterialTheme.colorScheme.onPrimary,
+                        )
+                    }
+                }
+            }
+
+            items(items = visibleExtensions, key = { "ext_${it.id}" }) { ext ->
+                val isExtInstalled = ext.id in installedExtIds
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f))
+                        .border(
+                            width = 1.dp,
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
+                            shape = RoundedCornerShape(16.dp),
+                        )
+                        .padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(52.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(Brush.verticalGradient(listOf(ext.primaryColor, ext.secondaryColor))),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Star,
+                            contentDescription = ext.title,
+                            tint = Color.White,
+                            modifier = Modifier.size(28.dp),
+                        )
+                    }
+
+                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(
+                            text = ext.title,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            text = ext.subtitle,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Text(
+                                text = "Browser Extension",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                            Text(
+                                text = "• ${ext.badge}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .background(
+                                if (isExtInstalled) MaterialTheme.colorScheme.errorContainer
+                                else MaterialTheme.colorScheme.primary,
+                            )
+                            .clickable {
+                                if (isExtInstalled) {
+                                    BrowserExtensionsManager.uninstall(context, ext.id)
+                                } else {
+                                    BrowserExtensionsManager.install(context, ext.id)
+                                }
+                            }
+                            .padding(horizontal = 16.dp, vertical = 9.dp),
+                    ) {
+                        Text(
+                            text = if (isExtInstalled) "Uninstall" else "Install",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isExtInstalled) MaterialTheme.colorScheme.onErrorContainer
+                            else MaterialTheme.colorScheme.onPrimary,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** Built-in apps including Google Maps launcher/browser fallback. */
+object CarApps {
+
+    val all: List<CarApp> = listOf(
+        CarApp("maps", "Maps", R.string.crumb_home, Icons.Filled.Place) {
+            GoogleMapsScreen()
+        },
+        CarApp("web", "Browser", R.string.app_browser, Icons.Filled.Search) {
+            WebApp(content = ProjectedContent.resolve(LocalContext.current))
+        },
+        CarApp("phone", "Screen sharing", R.string.app_screen_sharing, Icons.Filled.Share) {
+            PhoneAppsScreen()
+        },
+        CarApp("dialer", "Phone", R.string.carset_phone, Icons.Filled.Call) {
+            PhoneDialerScreen()
+        },
+        CarApp("settings", "Settings", R.string.settings_title, Icons.Filled.Settings) {
+            CarSettingsScreen()
+        },
+        CarApp("allapps", "App Hub", R.string.app_all_apps, Icons.Filled.ShoppingCart) {
+            AppHubStoreScreen()
+        },
+        CarApp("exit", "Exit", R.string.app_browser, Icons.Filled.Close) {
+            AllAppsScreen()
+        },
+    )
+
+    fun find(id: String): CarApp? = all.firstOrNull { it.id == id }
+
+    /** The screens [BuiltInApps.entries] offers here, so a choice list never names a hidden one. */
+    fun shown(launcher: Boolean, canCall: Boolean): List<CarApp> {
+        val ids = BuiltInApps.entries(launcher, canCall).mapNotNull { (it.builtIn?.screen as? CarScreen.App)?.id }.toSet()
+        return all.filter { it.id in ids }
+    }
+}
+
+@Composable
+internal fun GoogleMapsScreen() {
+    val context = LocalContext.current
+    val navigator = LocalCarNavigator.current
+    val frame = CarEnvironment.frame.value
+
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        val launchedNav = runCatching {
+            val navApps = app.seb3thehacker.gearslip.host.CarAppCatalog.installed(context)
+            val mapsApp = navApps.firstOrNull {
+                it.component.packageName.contains("maps", ignoreCase = true) || it.isNavigation
+            }
+            if (mapsApp != null) {
+                CarServices.connectNav(mapsApp, frame)
+                navigator.home()
+                true
+            } else {
+                val launchIntent = context.packageManager.getLaunchIntentForPackage("com.google.android.apps.maps")
+                if (launchIntent != null) {
+                    launchIntent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                    context.startActivity(launchIntent)
+                    true
+                } else {
+                    false
+                }
+            }
+        }.getOrDefault(false)
+
+        if (!launchedNav) {
+            navigator.home()
+        }
+    }
+
+    WebApp(content = "https://maps.google.com")
+}
