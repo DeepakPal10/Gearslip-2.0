@@ -107,7 +107,6 @@ fun CustomizableCarSettingsSection(
             fontWeight = FontWeight.Bold,
         )
 
-        // Screen Brightness Card
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -228,3 +227,4 @@ private fun CustomSwitchRow(
         }
         Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
+}
