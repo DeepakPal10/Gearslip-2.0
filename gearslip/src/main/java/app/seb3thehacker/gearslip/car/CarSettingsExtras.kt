@@ -228,4 +228,3 @@ private fun CustomSwitchRow(
         }
         Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
-}

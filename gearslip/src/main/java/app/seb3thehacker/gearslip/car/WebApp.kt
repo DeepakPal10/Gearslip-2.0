@@ -1,1035 +1,659 @@
 package app.seb3thehacker.gearslip.car
 
-import android.app.Activity
-import android.content.Context
-import android.content.ContextWrapper
-import android.graphics.Bitmap
-import android.os.Handler
-import android.os.Looper
-import android.provider.Settings
-import android.view.View
-import android.view.ViewGroup
-import android.webkit.JavascriptInterface
-import android.webkit.WebChromeClient
-import android.webkit.WebResourceError
-import android.webkit.WebResourceRequest
-import android.webkit.WebResourceResponse
-import android.webkit.WebView
-import android.webkit.WebViewClient
-import android.widget.FrameLayout
-import androidx.car.app.CarToast
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
+import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Mail
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Phone
+import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
-import app.seb3thehacker.gearslip.GearslipLog
+import androidx.compose.ui.unit.sp
+import app.seb3thehacker.gearslip.ProjectedContent
 import app.seb3thehacker.gearslip.R
-import app.seb3thehacker.gearslip.browser.BrowserSettings
-import app.seb3thehacker.gearslip.browser.SiteIcons
-import app.seb3thehacker.gearslip.browser.adblock.AdBlockManager
-import app.seb3thehacker.gearslip.browser.adblock.CosmeticFilterBridge
-import app.seb3thehacker.gearslip.browser.adblock.YouTubeAdBlock
-import app.seb3thehacker.gearslip.car.theme.GsIconBox
-import app.seb3thehacker.gearslip.car.theme.GsIconButton
-import app.seb3thehacker.gearslip.car.theme.GsTone
-import app.seb3thehacker.gearslip.car.theme.gsColors
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import org.json.JSONArray
-import org.json.JSONObject
-import java.util.concurrent.atomic.AtomicReference
 
-private const val DESKTOP_USER_AGENT =
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
-
-private const val PINNED_PREFS = "gearslip_pinned_sites"
-private const val PINNED_KEY = "sites_json"
-
-internal data class PinnedSite(
-    val title: String,
-    val url: String,
-    val host: String = "",
+/** One tile in the launcher and the screen it opens. */
+class CarApp(
+    val id: String,
+    /** English, for matching what a driver says; [labelRes] is what the screen shows. */
+    val label: String,
+    @param:StringRes val labelRes: Int,
+    val icon: ImageVector,
+    val content: @Composable () -> Unit,
 )
 
-private fun Any?.toImageBitmapOrNull(): ImageBitmap? = when (this) {
-    is ImageBitmap -> this
-    is Bitmap -> runCatching { asImageBitmap() }.getOrNull()
-    else -> null
+data class HubCatalogItem(
+    val id: String,
+    val title: String,
+    val subtitle: String,
+    val category: String,
+    val rating: String,
+    val sizeTag: String,
+    val url: String,
+    val icon: ImageVector,
+    val primaryColor: Color,
+    val secondaryColor: Color,
+)
+
+internal fun builtInAccentColor(idOrLabel: String): Color = when (idOrLabel.lowercase()) {
+    "web", "browser" -> Color(0xFF0091EA)
+    "phone", "screen sharing", "screensharing" -> Color(0xFF7C4DFF)
+    "dialer", "phone call" -> Color(0xFF00C853)
+    "maps", "google maps", "map" -> Color(0xFF1A73E8)
+    "settings" -> Color(0xFF455A64)
+    "allapps", "all apps", "app hub" -> Color(0xFF01875F)
+    "exit" -> Color(0xFFFF3B30)
+    else -> Color(0xFF007AFF)
 }
 
-internal object PinnedWebSites {
-    private val pendingUrl = MutableStateFlow<String?>(null)
-    val pendingOpenUrl: StateFlow<String?> = pendingUrl.asStateFlow()
+@Composable
+internal fun ColorfulBuiltInIcon(
+    idOrLabel: String,
+    icon: ImageVector,
+    contentDescription: String?,
+    boxSize: Dp,
+    iconSize: Dp,
+    cornerRadius: Dp = 14.dp,
+    modifier: Modifier = Modifier,
+) {
+    val base = builtInAccentColor(idOrLabel)
+    val lighter = base.copy(
+        red = (base.red + 0.16f).coerceAtMost(1f),
+        green = (base.green + 0.16f).coerceAtMost(1f),
+        blue = (base.blue + 0.16f).coerceAtMost(1f),
+    )
+    Box(
+        modifier = modifier
+            .size(boxSize)
+            .clip(RoundedCornerShape(cornerRadius))
+            .background(Brush.verticalGradient(listOf(lighter, base))),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            tint = Color.White,
+            modifier = Modifier.size(iconSize),
+        )
+    }
+}
 
-    private val sitesFlow = MutableStateFlow<List<PinnedSite>>(emptyList())
-    val sites: StateFlow<List<PinnedSite>> = sitesFlow.asStateFlow()
+private val HUB_CATALOG_ITEMS = listOf(
+    // Streaming Platforms (Authentic Brand Colors + Play/Media Icons)
+    HubCatalogItem("yt", "YouTube", "Videos & Live Streams", "Streaming", "4.8", "Web App", "https://m.youtube.com", Icons.AutoMirrored.Filled.ArrowForward, Color(0xFFFF0000), Color(0xFFCC0000)),
+    HubCatalogItem("netflix", "Netflix", "Movies & Web Series", "Streaming", "4.7", "HD Stream", "https://www.netflix.com", Icons.Filled.Favorite, Color(0xFFE50914), Color(0xFFB20710)),
+    HubCatalogItem("prime", "Prime Video", "Originals & Live Sports", "Streaming", "4.6", "HD Stream", "https://www.primevideo.com", Icons.Filled.Star, Color(0xFF00A8E1), Color(0xFF0073A8)),
+    HubCatalogItem("hotstar", "Disney+ Hotstar", "Cricket, Movies & Shows", "Streaming", "4.7", "Live TV", "https://www.hotstar.com", Icons.Filled.Home, Color(0xFF1565C0), Color(0xFF0A2A66)),
+    HubCatalogItem("jiocinema", "JioCinema", "IPL, Movies & Reality", "Streaming", "4.5", "Free HD", "https://www.jiocinema.com", Icons.Filled.Notifications, Color(0xFFD81B60), Color(0xFF880E4F)),
+    HubCatalogItem("sonyliv", "SonyLIV", "Sports & Originals", "Streaming", "4.4", "Stream", "https://www.sonyliv.com", Icons.Filled.Info, Color(0xFF4A148C), Color(0xFF1A237E)),
+    HubCatalogItem("zee5", "ZEE5", "Hindi & Regional Shows", "Streaming", "4.3", "Stream", "https://www.zee5.com", Icons.Filled.Mail, Color(0xFF5E35B1), Color(0xFF311B92)),
+    HubCatalogItem("twitch", "Twitch", "Live Gaming Streams", "Streaming", "4.6", "Live", "https://m.twitch.tv", Icons.Filled.Person, Color(0xFF9146FF), Color(0xFF6441A5)),
 
-    private var initialized = false
+    // Games
+    HubCatalogItem("minecraft", "Minecraft", "Sandbox Survival & SMP", "Games", "4.9", "Cloud / Web", "https://www.minecraft.net", Icons.Filled.Add, Color(0xFF43A047), Color(0xFF1B5E20)),
+    HubCatalogItem("forza", "Forza Horizon", "Open-World Car Racing", "Games", "4.8", "Cloud Play", "https://www.xbox.com/play", Icons.Filled.Place, Color(0xFF107C10), Color(0xFF0B530B)),
+    HubCatalogItem("palworld", "Palworld", "Open-World Monster Survival", "Games", "4.7", "Cloud Play", "https://www.pocketpair.jp/palworld", Icons.Filled.Refresh, Color(0xFF00ACC1), Color(0xFF006064)),
+    HubCatalogItem("greenhell", "Green Hell", "Amazon Rainforest Survival", "Games", "4.6", "Survival", "https://www.greenhell-game.com", Icons.Filled.Lock, Color(0xFF689F38), Color(0xFF33691E)),
+    HubCatalogItem("asphalt", "Asphalt Legends", "Arcade Street Racing", "Games", "4.6", "Racing", "https://www.gameloft.com", Icons.Filled.Search, Color(0xFF2979FF), Color(0xFF1565C0)),
+    HubCatalogItem("poki", "Poki Car Arcade", "Instant Browser Mini-Games", "Games", "4.7", "Instant", "https://poki.com", Icons.Filled.Share, Color(0xFF00BFA5), Color(0xFF00695C)),
+    HubCatalogItem("chess", "Chess.com", "Online Chess & Puzzles", "Games", "4.8", "Board", "https://www.chess.com", Icons.Filled.Settings, Color(0xFF5D4037), Color(0xFF3E2723)),
+    HubCatalogItem("geforcenow", "GeForce NOW", "PC Cloud Gaming Hub", "Games", "4.7", "Cloud", "https://play.geforcenow.com", Icons.Filled.Phone, Color(0xFF76B900), Color(0xFF33691E)),
 
-    fun extractHost(url: String): String =
-        runCatching { android.net.Uri.parse(url).host?.removePrefix("www.").orEmpty() }.getOrDefault("")
+    // Music & Radio
+    HubCatalogItem("ytmusic", "YouTube Music", "Songs, Mixes & Purane Gane", "Music", "4.8", "Audio", "https://music.youtube.com", Icons.Filled.Favorite, Color(0xFFFF0000), Color(0xFF990000)),
+    HubCatalogItem("spotify", "Spotify", "Music & Podcasts", "Music", "4.8", "Audio", "https://open.spotify.com", Icons.Filled.Star, Color(0xFF1DB954), Color(0xFF128C3E)),
+    HubCatalogItem("jiosaavn", "JioSaavn", "Bollywood & Hindi Radio", "Music", "4.6", "Audio", "https://www.jiosaavn.com", Icons.Filled.Notifications, Color(0xFF26A69A), Color(0xFF004D40)),
+    HubCatalogItem("radio", "Radio Garden", "Live FM Stations Worldwide", "Music", "4.7", "FM Live", "https://radio.garden", Icons.Filled.Refresh, Color(0xFF00838F), Color(0xFF004D40)),
+)
 
-    fun ensureLoaded(context: Context) {
-        if (initialized) return
-        initialized = true
-        val prefs = context.applicationContext.getSharedPreferences(PINNED_PREFS, Context.MODE_PRIVATE)
-        val raw = prefs.getString(PINNED_KEY, null) ?: return
-        val parsed = runCatching {
-            val arr = JSONArray(raw)
-            buildList {
-                for (i in 0 until arr.length()) {
-                    val obj = arr.optJSONObject(i) ?: continue
-                    val u = obj.optString("url").trim()
-                    if (u.startsWith("http://") || u.startsWith("https://")) {
-                        val h = obj.optString("host").trim().ifEmpty { extractHost(u) }
-                        val t = obj.optString("title").trim().ifEmpty { h.ifEmpty { u } }
-                        add(PinnedSite(title = t, url = u, host = h))
+@Composable
+internal fun AppHubStoreScreen() {
+    val context = LocalContext.current
+    val navigator = LocalCarNavigator.current
+    var selectedCategory by remember { mutableStateOf("All") }
+    var searchQuery by remember { mutableStateOf("") }
+    var installedIds by remember {
+        mutableStateOf(
+            PinnedWebSites.sites.value
+                .mapNotNull { site -> HUB_CATALOG_ITEMS.firstOrNull { it.url == site.url }?.id }
+                .toSet(),
+        )
+    }
+    val installedExtIds by BrowserExtensionsManager.installedIds.collectAsState()
+
+    LaunchedEffect(Unit) {
+        BrowserExtensionsManager.ensureLoaded(context)
+    }
+
+    val categories = listOf("All", "Games", "Streaming", "Music", "Extensions")
+    val visibleItems = remember(selectedCategory, searchQuery) {
+        if (selectedCategory.equals("Extensions", ignoreCase = true)) {
+            emptyList()
+        } else {
+            val q = searchQuery.trim().lowercase()
+            HUB_CATALOG_ITEMS.filter { item ->
+                val catOk = selectedCategory == "All" || item.category.equals(selectedCategory, ignoreCase = true)
+                val queryOk = q.isEmpty() ||
+                    item.title.lowercase().contains(q) ||
+                    item.subtitle.lowercase().contains(q) ||
+                    item.category.lowercase().contains(q)
+                catOk && queryOk
+            }
+        }
+    }
+
+    val visibleExtensions = remember(selectedCategory, searchQuery) {
+        if (!selectedCategory.equals("Extensions", ignoreCase = true) && selectedCategory != "All") {
+            emptyList()
+        } else {
+            val q = searchQuery.trim().lowercase()
+            BrowserExtensionsCatalog.items.filter { ext ->
+                q.isEmpty() ||
+                    ext.title.lowercase().contains(q) ||
+                    ext.subtitle.lowercase().contains(q) ||
+                    ext.badge.lowercase().contains(q)
+            }
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.surface)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        // Play Store Top Header + Search Bar
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            ColorfulBuiltInIcon(
+                idOrLabel = "allapps",
+                icon = Icons.Filled.ShoppingCart,
+                contentDescription = "App Hub",
+                boxSize = 44.dp,
+                iconSize = 22.dp,
+                cornerRadius = 12.dp,
+            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Gearslip Play Store",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                )
+                Text(
+                    text = "${HUB_CATALOG_ITEMS.size} Apps & ${BrowserExtensionsCatalog.items.size} Extensions",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
+            Row(
+                modifier = Modifier
+                    .width(210.dp)
+                    .height(40.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                    .padding(horizontal = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Search,
+                    contentDescription = "Search",
+                    modifier = Modifier.size(18.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Box(modifier = Modifier.weight(1f)) {
+                    if (searchQuery.isEmpty()) {
+                        Text(
+                            text = "Search apps & games",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                        )
+                    }
+                    BasicTextField(
+                        value = searchQuery,
+                        onValueChange = { searchQuery = it },
+                        singleLine = true,
+                        textStyle = TextStyle(
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontSize = 13.sp,
+                        ),
+                        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                if (searchQuery.isNotEmpty()) {
+                    Icon(
+                        imageVector = Icons.Filled.Close,
+                        contentDescription = "Clear",
+                        modifier = Modifier
+                            .size(16.dp)
+                            .clickable { searchQuery = "" },
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+
+        // Play Store Category Tabs
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            categories.forEach { cat ->
+                val isSelected = selectedCategory == cat
+                Box(
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .background(
+                            if (isSelected) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.surfaceVariant,
+                        )
+                        .clickable { selectedCategory = cat }
+                        .padding(horizontal = 16.dp, vertical = 7.dp),
+                ) {
+                    Text(
+                        text = cat,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                        color = if (isSelected) MaterialTheme.colorScheme.onPrimary
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+
+        // Featured Banner (Play Store Spotlight)
+        if (selectedCategory == "All" && searchQuery.isBlank()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(
+                        Brush.horizontalGradient(
+                            listOf(Color(0xFFD50000), Color(0xFF1565C0), Color(0xFF00897B)),
+                        ),
+                    )
+                    .clickable {
+                        installedIds = installedIds + "yt"
+                        PinnedWebSites.pin(context, "YouTube", "https://m.youtube.com")
+                        PinnedWebSites.openInBrowser(navigator, "https://m.youtube.com")
+                    }
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "FEATURED FOR CAR",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White.copy(alpha = 0.85f),
+                    )
+                    Text(
+                        text = "YouTube, Netflix, Minecraft & Cloud Games",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                Spacer(Modifier.width(8.dp))
+                Box(
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .background(Color.White)
+                        .padding(horizontal = 14.dp, vertical = 7.dp),
+                ) {
+                    Text(
+                        text = "Launch YouTube",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFFD50000),
+                    )
+                }
+            }
+        }
+
+        // Store Cards List
+        LazyColumn(
+            contentPadding = PaddingValues(bottom = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            items(items = visibleItems, key = { it.id }) { item ->
+                val isInstalled = item.id in installedIds
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f))
+                        .border(
+                            width = 1.dp,
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
+                            shape = RoundedCornerShape(16.dp),
+                        )
+                        .clickable {
+                            installedIds = installedIds + item.id
+                            PinnedWebSites.pin(context, item.title, item.url)
+                            PinnedWebSites.openInBrowser(navigator, item.url)
+                        }
+                        .padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(52.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(Brush.verticalGradient(listOf(item.primaryColor, item.secondaryColor))),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = item.icon,
+                            contentDescription = item.title,
+                            tint = Color.White,
+                            modifier = Modifier.size(28.dp),
+                        )
+                    }
+
+                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(
+                            text = item.title,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            text = item.subtitle,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Text(
+                                text = "★ ${item.rating}",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                            Text(
+                                text = "• ${item.category}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Text(
+                                text = "• ${item.sizeTag}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .background(
+                                if (isInstalled) MaterialTheme.colorScheme.errorContainer
+                                else MaterialTheme.colorScheme.primary,
+                            )
+                            .clickable {
+                                if (isInstalled) {
+                                    installedIds = installedIds - item.id
+                                    PinnedWebSites.unpin(context, item.url)
+                                } else {
+                                    installedIds = installedIds + item.id
+                                    PinnedWebSites.pin(context, item.title, item.url)
+                                    PinnedWebSites.openInBrowser(navigator, item.url)
+                                }
+                            }
+                            .padding(horizontal = 16.dp, vertical = 9.dp),
+                    ) {
+                        Text(
+                            text = if (isInstalled) "Uninstall" else "Install",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isInstalled) MaterialTheme.colorScheme.onErrorContainer
+                            else MaterialTheme.colorScheme.onPrimary,
+                        )
                     }
                 }
             }
-        }.getOrDefault(emptyList())
-        sitesFlow.value = parsed
-    }
 
-    private fun persist(context: Context, list: List<PinnedSite>) {
-        val arr = JSONArray()
-        list.forEach { site ->
-            arr.put(
-                JSONObject()
-                    .put("title", site.title)
-                    .put("url", site.url)
-                    .put("host", site.host.ifEmpty { extractHost(site.url) }),
-            )
-        }
-        context.applicationContext
-            .getSharedPreferences(PINNED_PREFS, Context.MODE_PRIVATE)
-            .edit()
-            .putString(PINNED_KEY, arr.toString())
-            .apply()
-    }
+            items(items = visibleExtensions, key = { "ext_${it.id}" }) { ext ->
+                val isExtInstalled = ext.id in installedExtIds
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f))
+                        .border(
+                            width = 1.dp,
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
+                            shape = RoundedCornerShape(16.dp),
+                        )
+                        .padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(52.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(Brush.verticalGradient(listOf(ext.primaryColor, ext.secondaryColor))),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Star,
+                            contentDescription = ext.title,
+                            tint = Color.White,
+                            modifier = Modifier.size(28.dp),
+                        )
+                    }
 
-    fun isPinned(url: String?): Boolean {
-        val target = url?.trim().orEmpty()
-        if (target.isEmpty()) return false
-        return sitesFlow.value.any { it.url == target }
-    }
+                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(
+                            text = ext.title,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            text = ext.subtitle,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Text(
+                                text = "Browser Extension",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                            Text(
+                                text = "• ${ext.badge}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
 
-    fun pin(context: Context, title: String, url: String, favicon: Bitmap? = null): Boolean {
-        ensureLoaded(context)
-        val cleanUrl = url.trim()
-        if (!cleanUrl.startsWith("http://") && !cleanUrl.startsWith("https://")) return false
-        val cleanHost = extractHost(cleanUrl)
-        val cleanTitle = title.trim()
-            .removePrefix("YouTube - ")
-            .removeSuffix(" - YouTube")
-            .trim()
-            .ifEmpty {
-                if (cleanHost.contains("youtube.com") || cleanHost == "youtu.be") "YouTube"
-                else cleanHost.ifEmpty { cleanUrl }
+                    Box(
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .background(
+                                if (isExtInstalled) MaterialTheme.colorScheme.errorContainer
+                                else MaterialTheme.colorScheme.primary,
+                            )
+                            .clickable {
+                                if (isExtInstalled) {
+                                    BrowserExtensionsManager.uninstall(context, ext.id)
+                                } else {
+                                    BrowserExtensionsManager.install(context, ext.id)
+                                }
+                            }
+                            .padding(horizontal = 16.dp, vertical = 9.dp),
+                    ) {
+                        Text(
+                            text = if (isExtInstalled) "Uninstall" else "Install",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isExtInstalled) MaterialTheme.colorScheme.onErrorContainer
+                            else MaterialTheme.colorScheme.onPrimary,
+                        )
+                    }
+                }
             }
-        if (favicon != null && cleanHost.isNotEmpty()) {
-            runCatching { SiteIcons.save(context.applicationContext, cleanHost, favicon) }
-        }
-        val current = sitesFlow.value.filterNot { it.url == cleanUrl }
-        val updated = current + PinnedSite(title = cleanTitle, url = cleanUrl, host = cleanHost)
-        sitesFlow.value = updated
-        persist(context, updated)
-        return true
-    }
-
-    fun unpin(context: Context, url: String): Boolean {
-        ensureLoaded(context)
-        val cleanUrl = url.trim()
-        val updated = sitesFlow.value.filterNot { it.url == cleanUrl }
-        if (updated.size == sitesFlow.value.size) return false
-        sitesFlow.value = updated
-        persist(context, updated)
-        return true
-    }
-
-    fun openInBrowser(navigator: CarNavigator, url: String) {
-        pendingUrl.value = url
-        BuiltInApps.Web.open(navigator)
-    }
-
-    fun openAaBrowserMode(navigator: CarNavigator, url: String = "https://www.google.com") {
-        openInBrowser(navigator, url)
-    }
-
-    fun consumePendingUrl(): String? {
-        val u = pendingUrl.value
-        pendingUrl.value = null
-        return u
-    }
-
-    private fun loadSavedIcon(context: Context, host: String): Any? {
-        if (host.isBlank()) return null
-        return runCatching {
-            val clazz = SiteIcons::class.java
-            val method = clazz.declaredMethods.firstOrNull { m ->
-                m.parameterCount == 2 &&
-                    m.parameterTypes[0].isAssignableFrom(Context::class.java) &&
-                    m.parameterTypes[1] == String::class.java
-            }
-            method?.invoke(SiteIcons, context.applicationContext, host)
-        }.getOrNull()
-    }
-
-    internal fun entries(context: Context): List<Entry> {
-        ensureLoaded(context)
-        return sitesFlow.value.map { site ->
-            val cleanHost = site.host.ifEmpty { extractHost(site.url) }
-            val imageBitmap = loadSavedIcon(context, cleanHost).toImageBitmapOrNull()
-            val glyph = if (cleanHost.contains("youtube.com") || cleanHost == "youtu.be") {
-                Icons.Filled.PlayArrow
-            } else {
-                Icons.Filled.Home
-            }
-            Entry(
-                label = site.title,
-                icon = imageBitmap,
-                pinnedUrl = site.url,
-                fallbackGlyph = glyph,
-            )
         }
     }
 }
 
-private fun applyDesktopMode(view: WebView?, enabled: Boolean, defaultUserAgent: String?) {
-    val wv = view ?: return
-    val targetUa = if (enabled) DESKTOP_USER_AGENT else defaultUserAgent
-    wv.settings.useWideViewPort = true
-    wv.settings.loadWithOverviewMode = true
-    val uaChanged = targetUa != null && wv.settings.userAgentString != targetUa
-    if (uaChanged) {
-        wv.settings.userAgentString = targetUa
-    }
-    if (wv.url != null && wv.url != "about:blank") {
-        wv.reload()
-    }
-}
+/** Built-in apps including Google Maps launcher/browser fallback. */
+object CarApps {
 
-private fun Context.findActivity(): Activity? {
-    var ctx: Context? = this
-    while (ctx is ContextWrapper) {
-        if (ctx is Activity) return ctx
-        ctx = ctx.baseContext
-    }
-    return null
-}
+    val all: List<CarApp> = listOf(
+        CarApp("maps", "Maps", R.string.crumb_home, Icons.Filled.Place) {
+            GoogleMapsScreen()
+        },
+        CarApp("web", "Browser", R.string.app_browser, Icons.Filled.Search) {
+            WebApp(content = ProjectedContent.resolve(LocalContext.current))
+        },
+        CarApp("phone", "Screen sharing", R.string.app_screen_sharing, Icons.Filled.Share) {
+            PhoneAppsScreen()
+        },
+        CarApp("dialer", "Phone", R.string.carset_phone, Icons.Filled.Call) {
+            PhoneDialerScreen()
+        },
+        CarApp("settings", "Settings", R.string.settings_title, Icons.Filled.Settings) {
+            CarSettingsScreen()
+        },
+        CarApp("allapps", "App Hub", R.string.app_all_apps, Icons.Filled.ShoppingCart) {
+            AppHubStoreScreen()
+        },
+        CarApp("exit", "Exit", R.string.app_browser, Icons.Filled.Close) {
+            AllAppsScreen()
+        },
+    )
 
-/**
- * Sets infotainment / host display brightness within its real hardware/window range (0.1f..1.0f).
- */
-private fun applyInfotainmentBrightness(context: Context, rootView: View?, level: Float) {
-    val clamped = level.coerceIn(0.1f, 1.0f)
-    val activity = context.findActivity()
-    activity?.window?.let { win ->
-        runCatching {
-            val attrs = win.attributes
-            attrs.screenBrightness = clamped
-            win.attributes = attrs
-        }
-    }
-    rootView?.context?.findActivity()?.window?.let { hostWin ->
-        if (hostWin !== activity?.window) {
-            runCatching {
-                val attrs = hostWin.attributes
-                attrs.screenBrightness = clamped
-                hostWin.attributes = attrs
-            }
-        }
-    }
-    runCatching {
-        val targetContext = activity ?: context
-        if (Settings.System.canWrite(targetContext)) {
-            val sysVal = (clamped * 255f).toInt().coerceIn(1, 255)
-            Settings.System.putInt(
-                targetContext.contentResolver,
-                Settings.System.SCREEN_BRIGHTNESS,
-                sysVal,
-            )
-        }
+    fun find(id: String): CarApp? = all.firstOrNull { it.id == id }
+
+    /** The screens [BuiltInApps.entries] offers here, so a choice list never names a hidden one. */
+    fun shown(launcher: Boolean, canCall: Boolean): List<CarApp> {
+        val ids = BuiltInApps.entries(launcher, canCall).mapNotNull { (it.builtIn?.screen as? CarScreen.App)?.id }.toSet()
+        return all.filter { it.id in ids }
     }
 }
 
 @Composable
-fun WebApp(content: String) {
-    val navigator = LocalCarNavigator.current
-    val darkOutside = LocalDarkOutside.current
-    val ring = String.format("#%06X", MaterialTheme.colorScheme.primary.toArgb() and 0xFFFFFF)
-    var web by remember { mutableStateOf<WebView?>(null) }
-    var defaultUserAgent by remember { mutableStateOf<String?>(null) }
-    var desktopMode by remember { mutableStateOf(false) }
-    var fieldText by remember { mutableStateOf<String?>(null) }
-    var pageFullscreen by remember { mutableStateOf<Pair<View, WebChromeClient.CustomViewCallback>?>(null) }
-    var videoMadeFullscreen by remember { mutableStateOf(false) }
-    val hideChromeForFullscreen = CarFullscreen.active || pageFullscreen != null
-    var showExitFullscreenPill by remember { mutableStateOf(false) }
-    var exitPillTriggerCount by remember { mutableIntStateOf(0) }
-    var showBrightnessPill by remember { mutableStateOf(false) }
-    var brightnessPillTriggerCount by remember { mutableIntStateOf(0) }
-    var showBrightnessBoosterSheet by remember { mutableStateOf(false) }
-    var boosterInteractionTick by remember { mutableIntStateOf(0) }
-    var pageTitle by remember { mutableStateOf("") }
-    var pageIcon by remember { mutableStateOf<Bitmap?>(null) }
-    var canGoForward by remember { mutableStateOf(false) }
-    var address by remember { mutableStateOf<String?>(null) }
-    var newBookmark by remember { mutableStateOf<String?>(null) }
-    var atStart by remember { mutableStateOf(content.isBlank()) }
-    var pageUrl by remember { mutableStateOf<String?>(null) }
-    val bookmarks by BrowserSettings.bookmarks.collectAsState()
-    val pinnedSites by PinnedWebSites.sites.collectAsState()
-    val pendingPinnedUrl by PinnedWebSites.pendingOpenUrl.collectAsState()
+internal fun GoogleMapsScreen() {
     val context = LocalContext.current
-    val hostView = LocalView.current
-    var brightnessLevel by remember {
-        mutableFloatStateOf(
-            runCatching {
-                val cur = context.findActivity()?.window?.attributes?.screenBrightness ?: -1f
-                if (cur in 0.1f..1.0f) {
-                    cur
-                } else {
-                    val sys = Settings.System.getInt(
-                        context.contentResolver,
-                        Settings.System.SCREEN_BRIGHTNESS,
-                        190,
-                    )
-                    (sys / 255f).coerceIn(0.1f, 1.0f)
-                }
-            }.getOrDefault(0.75f),
-        )
-    }
+    val navigator = LocalCarNavigator.current
+    val frame = CarEnvironment.frame.value
 
-    LaunchedEffect(Unit) {
-        PinnedWebSites.ensureLoaded(context)
-        AdBlockManager.ensureInitialized(context)
-        AdBlockManager.refreshIfDue(context)
-    }
-
-    LaunchedEffect(hideChromeForFullscreen) {
-        if (!hideChromeForFullscreen) {
-            showExitFullscreenPill = false
-        }
-    }
-
-    LaunchedEffect(showExitFullscreenPill, exitPillTriggerCount) {
-        if (showExitFullscreenPill) {
-            delay(3500L)
-            showExitFullscreenPill = false
-        }
-    }
-
-    LaunchedEffect(showBrightnessPill, brightnessPillTriggerCount) {
-        if (showBrightnessPill) {
-            delay(3500L)
-            showBrightnessPill = false
-        }
-    }
-
-    LaunchedEffect(showBrightnessBoosterSheet, boosterInteractionTick) {
-        if (showBrightnessBoosterSheet) {
-            delay(4000L)
-            showBrightnessBoosterSheet = false
-        }
-    }
-
-    val exitAllFullscreen: () -> Unit = {
-        showExitFullscreenPill = false
-        pageFullscreen?.second?.onCustomViewHidden()
-        pageFullscreen = null
-        if (CarFullscreen.active) {
-            CarFullscreen.exit()
-        }
-    }
-
-    LaunchedEffect(desktopMode, web, defaultUserAgent) {
-        if (web != null && defaultUserAgent != null) {
-            applyDesktopMode(web, desktopMode, defaultUserAgent)
-        }
-    }
-
-    val open: (String) -> Unit = { url ->
-        atStart = false
-        pageIcon = null
-        web?.loadUrl(url)
-    }
-
-    LaunchedEffect(pendingPinnedUrl, web) {
-        val target = pendingPinnedUrl
-        if (target != null && web != null) {
-            PinnedWebSites.consumePendingUrl()
-            open(target)
-        }
-    }
-
-    val goHome: () -> Unit = {
-        if (content.isBlank()) {
-            atStart = true
-            pageTitle = ""
-            pageIcon = null
-        } else {
-            web?.let { view -> loadContent(view, content) }
-        }
-    }
-
-    DisposableEffect(Unit) { onDispose { CarFullscreen.exit() } }
-    LaunchedEffect(CarFullscreen.active) {
-        if (!CarFullscreen.active) pageFullscreen?.let { (_, callback) ->
-            pageFullscreen = null
-            callback.onCustomViewHidden()
-        }
-    }
-
-    DisposableEffect(web, atStart, pageFullscreen) {
-        navigator.backInterceptor = {
-            val view = web
-            if (showBrightnessBoosterSheet) {
-                showBrightnessBoosterSheet = false
-                true
-            } else if (pageFullscreen != null || CarFullscreen.active) {
-                exitAllFullscreen()
-                true
-            } else if (!atStart && view != null && view.canGoBack()) {
-                view.goBack()
-                true
-            } else if (!atStart && content.isBlank()) {
-                goHome()
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        val launchedNav = runCatching {
+            val navApps = app.seb3thehacker.gearslip.host.CarAppCatalog.installed(context)
+            val mapsApp = navApps.firstOrNull {
+                it.component.packageName.contains("maps", ignoreCase = true) || it.isNavigation
+            }
+            if (mapsApp != null) {
+                CarServices.connectNav(mapsApp, frame)
+                navigator.home()
                 true
             } else {
-                false
-            }
-        }
-        onDispose { navigator.backInterceptor = null }
-    }
-
-    Column(Modifier.fillMaxSize()) {
-        if (!hideChromeForFullscreen) {
-            ScreenHeader(pageTitle.takeUnless { atStart }.orEmpty().ifEmpty { stringResource(R.string.app_browser) }, Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                val url = pageUrl
-                if (!atStart && url != null && url.startsWith("http")) {
-                    val saved = remember(bookmarks, url) { BrowserSettings.isBookmarked(url) }
-                    val pinned = remember(pinnedSites, url) { PinnedWebSites.isPinned(url) }
-                    GsIconBox(
-                        {
-                            if (saved) BrowserSettings.removeBookmark(url) else BrowserSettings.addBookmark(pageTitle, url)
-                            CarToasts.show(BrowserSettings, context.getString(if (saved) R.string.web_bookmark_removed else R.string.web_bookmark_added), CarToast.LENGTH_SHORT)
-                        },
-                        Modifier.size(48.dp),
-                        gsColors(if (saved) GsTone.Tonal else GsTone.Neutral),
-                        latched = saved,
-                    ) {
-                        Icon(
-                            Icons.Filled.Star,
-                            stringResource(if (saved) R.string.web_remove_this_bookmark else R.string.web_bookmark_this),
-                            Modifier.size(24.dp),
-                            tint = if (saved) MaterialTheme.colorScheme.primary else LocalContentColor.current.copy(alpha = 0.6f),
-                        )
-                    }
-                    GsIconBox(
-                        {
-                            val currentFavicon = pageIcon ?: web?.favicon
-                            val done = if (pinned) {
-                                PinnedWebSites.unpin(context, url)
-                            } else {
-                                PinnedWebSites.pin(context, pageTitle, url, currentFavicon)
-                            }
-                            if (done) {
-                                val msg = if (pinned) "Unpinned from Home" else "Pinned to Home"
-                                CarToasts.show(BrowserSettings, msg, CarToast.LENGTH_SHORT)
-                            }
-                        },
-                        Modifier.size(48.dp),
-                        gsColors(if (pinned) GsTone.Tonal else GsTone.Neutral),
-                        latched = pinned,
-                    ) {
-                        Icon(
-                            Icons.Filled.Add,
-                            contentDescription = if (pinned) "Unpin from Home" else "Pin to Home",
-                            Modifier.size(24.dp),
-                            tint = if (pinned) MaterialTheme.colorScheme.primary else LocalContentColor.current.copy(alpha = 0.65f),
-                        )
-                    }
-                }
-                if (!atStart) {
-                    GsIconBox(
-                        {
-                            desktopMode = !desktopMode
-                            val msg = if (desktopMode) "Desktop mode ON" else "Desktop mode OFF"
-                            CarToasts.show(BrowserSettings, msg, CarToast.LENGTH_SHORT)
-                        },
-                        Modifier.size(48.dp),
-                        gsColors(if (desktopMode) GsTone.Tonal else GsTone.Neutral),
-                        latched = desktopMode,
-                    ) {
-                        Icon(
-                            Icons.Filled.Home,
-                            contentDescription = "Desktop mode",
-                            Modifier.size(24.dp),
-                            tint = if (desktopMode) MaterialTheme.colorScheme.primary else LocalContentColor.current.copy(alpha = 0.7f),
-                        )
-                    }
-                }
-                GsIconButton(Icons.Filled.Search, stringResource(R.string.web_search), {
-                    fieldText = null
-                    address = ""
-                })
-                if (canGoForward && !atStart) {
-                    GsIconButton(Icons.AutoMirrored.Filled.ArrowForward, stringResource(R.string.web_forward), { web?.goForward() })
-                }
-                if (!atStart) {
-                    GsIconButton(Icons.Filled.Refresh, stringResource(R.string.web_reload), { web?.reload() })
-                    GsIconButton(Icons.Filled.Home, stringResource(R.string.web_start_page), goHome)
-                    GsIconButton(MediaIcons.Fullscreen, stringResource(R.string.web_fullscreen), CarFullscreen::enter)
+                val launchIntent = context.packageManager.getLaunchIntentForPackage("com.google.android.apps.maps")
+                if (launchIntent != null) {
+                    launchIntent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                    context.startActivity(launchIntent)
+                    true
+                } else {
+                    false
                 }
             }
-        }
-        Box(Modifier.weight(1f).fillMaxSize()) {
-            AndroidView(
-                modifier = Modifier.fillMaxSize(),
-                factory = { context ->
-                    WebView(context).apply {
-                        val documentUrl = AtomicReference<String?>(null)
-                        CosmeticFilterBridge.attach(this)
-                        defaultUserAgent = settings.userAgentString
-                        settings.javaScriptEnabled = true
-                        settings.domStorageEnabled = true
-                        settings.loadWithOverviewMode = true
-                        settings.useWideViewPort = true
-                        if (desktopMode) {
-                            settings.userAgentString = DESKTOP_USER_AGENT
-                        }
-                        settings.mediaPlaybackRequiresUserGesture = false
-                        settings.offscreenPreRaster = true
-                        webViewClient = LoggingClient(ring, documentUrl, onStarted = { pageUrl = it }) { view ->
-                            canGoForward = view.canGoForward()
-                            pageUrl = view.url
-                            pageTitle = view.title.orEmpty().takeUnless { it.startsWith("http") || it == "about:blank" }.orEmpty()
-                            view.favicon?.let { fav ->
-                                pageIcon = fav
-                                val host = view.url?.let { PinnedWebSites.extractHost(it) }.orEmpty()
-                                if (host.isNotEmpty()) {
-                                    runCatching { SiteIcons.save(view.context, host, fav) }
-                                }
-                            }
-                        }
-                        webChromeClient = object : WebChromeClient() {
-                            override fun onReceivedTitle(view: WebView?, title: String?) {
-                                pageTitle = title.orEmpty().takeUnless { it.startsWith("http") || it == "about:blank" }.orEmpty()
-                            }
+        }.getOrDefault(false)
 
-                            override fun onReceivedIcon(view: WebView?, icon: Bitmap?) {
-                                pageIcon = icon
-                                val host = view?.url?.let { PinnedWebSites.extractHost(it) }.orEmpty()
-                                if (icon != null && host.isNotEmpty()) {
-                                    runCatching { SiteIcons.save(view.context, host, icon) }
-                                }
-                            }
-
-                            override fun onShowCustomView(view: View, callback: CustomViewCallback) {
-                                videoMadeFullscreen = !CarFullscreen.active
-                                pageFullscreen = view to callback
-                                CarFullscreen.enter()
-                            }
-
-                            override fun onHideCustomView() {
-                                if (pageFullscreen == null) return
-                                pageFullscreen = null
-                                if (videoMadeFullscreen) CarFullscreen.exit()
-                            }
-                        }
-                        addJavascriptInterface(
-                            FieldFocusBridge(onFocus = { fieldText = it }, onBlur = { fieldText = null }),
-                            "GearslipField",
-                        )
-                        val initial = PinnedWebSites.consumePendingUrl() ?: content
-                        if (initial.isNotBlank()) {
-                            atStart = false
-                            loadContent(this, initial)
-                        }
-                        web = this
-                    }
-                },
-                update = { it.settings.isAlgorithmicDarkeningAllowed = darkOutside },
-                onRelease = { it.destroy() },
-            )
-            if (atStart) {
-                Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
-                    BrowserStartPage(
-                        onOpen = open,
-                        onSearch = {
-                            fieldText = null
-                            address = ""
-                        },
-                        onAdd = { newBookmark = "https://" },
-                    )
-                }
-            }
-            pageFullscreen?.let { (view, _) ->
-                androidx.compose.runtime.key(view) {
-                    AndroidView(
-                        factory = { context ->
-                            FrameLayout(context).apply {
-                                setBackgroundColor(android.graphics.Color.BLACK)
-                                (view.parent as? ViewGroup)?.removeView(view)
-                                addView(view, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
-                            }
-                        },
-                        modifier = Modifier.fillMaxSize(),
-                        onRelease = { it.removeAllViews() },
-                    )
-                }
-            }
-
-            if (hideChromeForFullscreen) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .fillMaxWidth()
-                        .height(52.dp)
-                        .pointerInput(Unit) {
-                            var totalDragY = 0f
-                            detectVerticalDragGestures(
-                                onDragStart = { totalDragY = 0f },
-                                onVerticalDrag = { _, dragAmount ->
-                                    totalDragY += dragAmount
-                                    if (totalDragY > 24f && !showExitFullscreenPill) {
-                                        showExitFullscreenPill = true
-                                        exitPillTriggerCount++
-                                    }
-                                },
-                            )
-                        },
-                )
-
-                androidx.compose.animation.AnimatedVisibility(
-                    visible = showExitFullscreenPill,
-                    enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
-                    exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut(),
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .padding(top = 14.dp),
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .clip(CircleShape)
-                            .background(Color(0xDD14161D))
-                            .border(1.dp, Color.White.copy(alpha = 0.28f), CircleShape)
-                            .clickable { exitAllFullscreen() }
-                            .padding(horizontal = 18.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Close,
-                            contentDescription = "Exit fullscreen",
-                            tint = Color.White,
-                            modifier = Modifier.size(18.dp),
-                        )
-                        Text(
-                            text = "Exit fullscreen",
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.SemiBold,
-                            color = Color.White,
-                        )
-                    }
-                }
-            }
-
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .height(52.dp)
-                    .pointerInput(Unit) {
-                        var upwardDrag = 0f
-                        detectVerticalDragGestures(
-                            onDragStart = { upwardDrag = 0f },
-                            onVerticalDrag = { _, dragAmount ->
-                                if (dragAmount < 0f) {
-                                    upwardDrag += -dragAmount
-                                    if (upwardDrag > 24f && !showBrightnessBoosterSheet) {
-                                        showBrightnessPill = true
-                                        brightnessPillTriggerCount++
-                                    }
-                                }
-                            },
-                        )
-                    },
-            )
-
-            androidx.compose.animation.AnimatedVisibility(
-                visible = showBrightnessPill && !showBrightnessBoosterSheet,
-                enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
-                exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 14.dp),
-            ) {
-                Row(
-                    modifier = Modifier
-                        .clip(CircleShape)
-                        .background(Color(0xEE14161D))
-                        .border(1.dp, Color.White.copy(alpha = 0.28f), CircleShape)
-                        .clickable {
-                            showBrightnessPill = false
-                            showBrightnessBoosterSheet = true
-                            boosterInteractionTick++
-                        }
-                        .padding(horizontal = 18.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Star,
-                        contentDescription = "Display Brightness",
-                        tint = Color(0xFFFFC107),
-                        modifier = Modifier.size(18.dp),
-                    )
-                    Text(
-                        text = "Display Brightness",
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.SemiBold,
-                        color = Color.White,
-                    )
-                }
-            }
-
-            androidx.compose.animation.AnimatedVisibility(
-                visible = showBrightnessBoosterSheet,
-                enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
-                exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
-            ) {
-                val pct = (brightnessLevel * 100).toInt()
-                val isMax = brightnessLevel >= 0.99f
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.45f))
-                        .clickable { showBrightnessBoosterSheet = false },
-                    contentAlignment = Alignment.BottomCenter,
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth(0.92f)
-                            .padding(bottom = 20.dp)
-                            .clip(RoundedCornerShape(24.dp))
-                            .background(Color(0xF2181B24))
-                            .border(1.dp, Color.White.copy(alpha = 0.2f), RoundedCornerShape(24.dp))
-                            .clickable(enabled = false) {}
-                            .padding(18.dp),
-                        verticalArrangement = Arrangement.spacedBy(14.dp),
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Filled.Star,
-                                    contentDescription = null,
-                                    tint = if (isMax) Color(0xFFFFC107) else Color.White,
-                                    modifier = Modifier.size(20.dp),
-                                )
-                                Text(
-                                    text = if (isMax) "Screen Brightness · $pct% (MAX)" else "Screen Brightness · $pct%",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = Color.White,
-                                )
-                            }
-                            Icon(
-                                imageVector = Icons.Filled.Close,
-                                contentDescription = "Close",
-                                tint = Color.White.copy(alpha = 0.8f),
-                                modifier = Modifier
-                                    .size(22.dp)
-                                    .clickable { showBrightnessBoosterSheet = false },
-                            )
-                        }
-
-                        Slider(
-                            value = brightnessLevel,
-                            onValueChange = { newVal ->
-                                brightnessLevel = newVal.coerceIn(0.1f, 1.0f)
-                                applyInfotainmentBrightness(context, hostView, brightnessLevel)
-                                boosterInteractionTick++
-                            },
-                            valueRange = 0.1f..1.0f,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clip(CircleShape)
-                                    .background(Color.White.copy(alpha = 0.14f))
-                                    .clickable {
-                                        brightnessLevel = 0.4f
-                                        applyInfotainmentBrightness(context, hostView, brightnessLevel)
-                                        boosterInteractionTick++
-                                    }
-                                    .padding(vertical = 10.dp),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Text("40% Dim", color = Color.White, fontWeight = FontWeight.Medium)
-                            }
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clip(CircleShape)
-                                    .background(Color.White.copy(alpha = 0.14f))
-                                    .clickable {
-                                        brightnessLevel = 0.7f
-                                        applyInfotainmentBrightness(context, hostView, brightnessLevel)
-                                        boosterInteractionTick++
-                                    }
-                                    .padding(vertical = 10.dp),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Text("70%", color = Color.White, fontWeight = FontWeight.Medium)
-                            }
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clip(CircleShape)
-                                    .background(Color(0xFFFFC107))
-                                    .clickable {
-                                        brightnessLevel = 1.0f
-                                        applyInfotainmentBrightness(context, hostView, brightnessLevel)
-                                        boosterInteractionTick++
-                                    }
-                                    .padding(vertical = 10.dp),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Text("Max (100%)", color = Color(0xFF14161D), fontWeight = FontWeight.Bold)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        address?.let { typed ->
-            CarKeyboard(
-                text = typed,
-                onTextChange = { address = it },
-                onSubmit = {
-                    open(BrowserSettings.addressToUrl(typed))
-                    address = null
-                },
-                onDismiss = { address = null },
-            )
-        }
-        newBookmark?.let { typed ->
-            CarKeyboard(
-                text = typed,
-                onTextChange = { newBookmark = it },
-                onSubmit = {
-                    val text = typed.trim()
-                    val url = when {
-                        text.startsWith("http://") || text.startsWith("https://") -> text
-                        ' ' !in text && '.' in text -> "https://$text"
-                        else -> null
-                    }
-                    if (url != null && BrowserSettings.addBookmark("", url)) {
-                        CarToasts.show(BrowserSettings, context.getString(R.string.web_bookmark_added), CarToast.LENGTH_SHORT)
-                    }
-                    newBookmark = null
-                },
-                onDismiss = { newBookmark = null },
-            )
-        }
-        fieldText?.let { text ->
-            CarKeyboard(
-                text = text,
-                onTextChange = { updated ->
-                    fieldText = updated
-                    web?.evaluateJavascript(setFieldValueJs(updated), null)
-                },
-                onSubmit = { web?.evaluateJavascript(SUBMIT_FIELD_JS, null) },
-                onDismiss = {
-                    fieldText = null
-                    web?.evaluateJavascript(BLUR_FIELD_JS, null)
-                },
-            )
+        if (!launchedNav) {
+            navigator.home()
         }
     }
+
+    WebApp(content = "https://maps.google.com")
 }
-
-private fun loadContent(view: WebView, content: String) {
-    if (content.startsWith("http://") || content.startsWith("https://")) {
-        view.loadUrl(content)
-    } else {
-        view.loadDataWithBaseURL(null, content, "text/html", "utf-8", null)
-    }
-}
-
-private class LoggingClient(
-    private val ring: String,
-    private val documentUrl: AtomicReference<String?>,
-    private val onStarted: (String?) -> Unit,
-    private val onLoaded: (WebView) -> Unit,
-) : WebViewClient() {
-    override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? =
-        request?.let { AdBlockManager.response(it, documentUrl.get()) }
-
-    override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
-        documentUrl.set(url)
-        onStarted(url)
-        if (CosmeticFilterBridge.needsPageStartFallback) {
-            view?.evaluateJavascript(CosmeticFilterBridge.INJECTION_JS, null)
-            view?.evaluateJavascript(YouTubeAdBlock.INJECTION_JS, null)
-        }
-    }
-
-    override fun onPageFinished(view: WebView?, url: String?) {
-        documentUrl.set(url)
-        GearslipLog.i("car web page loaded: $url")
-        AdBlockManager.logPageCost(url)
-        view?.let(onLoaded)
-        view?.evaluateJavascript(FOCUS_TRACKING_JS, null)
-        view?.evaluateJavascript(focusRingJs(ring), null)
-    }
-
-    override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: WebResourceError?) {
-        if (request?.isForMainFrame == true) {
-            GearslipLog.e("car web page FAILED: ${request.url} - ${error?.errorCode} ${error?.description}")
-        }
-    }
-
-    override fun onReceivedHttpError(view: WebView?, request: WebResourceRequest?, response: WebResourceResponse?) {
-        if (request?.isForMainFrame == true) {
-            GearslipLog.w("car web page HTTP ${response?.statusCode} for ${request.url}")
-        }
-    }
-}
-
-private class FieldFocusBridge(private val onFocus: (String) -> Unit, private val onBlur: () -> Unit) {
-    private val main = Handler(Looper.getMainLooper())
-
-    @JavascriptInterface
-    fun focused(value: String) { main.post { onFocus(value) } }
-
-    @JavascriptInterface
-    fun blurred() { main.post { onBlur() } }
-}
-
-private fun setFieldValueJs(value: String) = """
-    (function() {
-        var el = document.activeElement;
-        if (!el) return;
-        var proto = el.tagName === 'TEXTAREA' ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
-        var setter = Object.getOwnPropertyDescriptor(proto, 'value');
-        if (setter && setter.set) { setter.set.call(el, ${JSONObject.quote(value)}); } else { el.value = ${JSONObject.quote(value)}; }
-        el.dispatchEvent(new Event('input', { bubbles: true }));
-        el.dispatchEvent(new Event('change', { bubbles: true }));
-    })();
-""".trimIndent()
-
-private const val BLUR_FIELD_JS = "document.activeElement && document.activeElement.blur();"
-
-private const val SUBMIT_FIELD_JS = """
-    (function() {
-        var el = document.activeElement;
-        if (!el) return;
-        var enter = new KeyboardEvent('keydown', {
-            key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true,
-        });
-        var notHandled = el.dispatchEvent(enter);
-        if (notHandled && el.form) {
-            if (el.form.requestSubmit) el.form.requestSubmit(); else el.form.submit();
-        }
-    })();
-"""
-
-private fun focusRingJs(color: String) = """
-    (function() {
-        if (document.getElementById('gearslip-focus-ring')) return;
-        var style = document.createElement('style');
-        style.id = 'gearslip-focus-ring';
-        style.textContent = ':focus-visible { outline: 3px solid $color !important; outline-offset: 2px !important; }';
-        (document.head || document.documentElement).appendChild(style);
-    })();
-"""
-
-private const val FOCUS_TRACKING_JS = """
-    (function() {
-        function isEditable(el) {
-            if (!el) return false;
-            var tag = el.tagName;
-            if (tag === 'TEXTAREA') return true;
-            if (el.isContentEditable) return true;
-            if (tag !== 'INPUT') return false;
-            var skip = ['button', 'submit', 'checkbox', 'radio', 'range', 'color', 'file', 'image', 'reset'];
-            return skip.indexOf((el.type || 'text').toLowerCase()) === -1;
-        }
-        document.addEventListener('focusin', function(e) {
-            if (isEditable(e.target)) window.GearslipField.focused(e.target.value || '');
-        });
-        document.addEventListener('focusout', function(e) {
-            if (isEditable(e.target)) window.GearslipField.blurred();
-        });
-    })();
-"""
