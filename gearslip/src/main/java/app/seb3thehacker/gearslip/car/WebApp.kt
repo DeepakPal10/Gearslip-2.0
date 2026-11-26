@@ -64,6 +64,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.painter.BitmapPainter
+import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
@@ -101,6 +104,13 @@ internal data class PinnedSite(
     val url: String,
     val host: String = "",
 )
+
+private fun Any?.toPainterOrNull(): Painter? = when (this) {
+    is Painter -> this
+    is Bitmap -> runCatching { BitmapPainter(asImageBitmap()) }.getOrNull()
+    is androidx.compose.ui.graphics.ImageBitmap -> runCatching { BitmapPainter(this) }.getOrNull()
+    else -> null
+}
 
 internal object PinnedWebSites {
     private val pendingUrl = MutableStateFlow<String?>(null)
@@ -210,15 +220,14 @@ internal object PinnedWebSites {
         }.getOrNull()
     }
 
-    @Suppress("UNCHECKED_CAST")
     internal fun entries(context: Context): List<Entry> {
         ensureLoaded(context)
         return sitesFlow.value.map { site ->
             val cleanHost = site.host.ifEmpty { extractHost(site.url) }
-            val iconObj = loadSavedIcon(context, cleanHost)
+            val painter = loadSavedIcon(context, cleanHost).toPainterOrNull()
             Entry(
                 label = site.title,
-                icon = iconObj as? androidx.compose.ui.graphics.painter.Painter,
+                icon = painter,
                 pinnedUrl = site.url,
                 fallbackGlyph = Icons.Filled.Home,
             )
@@ -580,38 +589,36 @@ fun WebApp(content: String) {
                         },
                 )
 
-                Box(modifier = Modifier.fillMaxSize()) {
-                    AnimatedVisibility(
-                        visible = showExitFullscreenPill,
-                        enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
-                        exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut(),
+                AnimatedVisibility(
+                    visible = showExitFullscreenPill,
+                    enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
+                    exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut(),
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 14.dp),
+                ) {
+                    Row(
                         modifier = Modifier
-                            .align(Alignment.TopCenter)
-                            .padding(top = 14.dp),
+                            .clip(CircleShape)
+                            .background(Color(0xDD14161D))
+                            .border(1.dp, Color.White.copy(alpha = 0.28f), CircleShape)
+                            .clickable { exitAllFullscreen() }
+                            .padding(horizontal = 18.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        Row(
-                            modifier = Modifier
-                                .clip(CircleShape)
-                                .background(Color(0xDD14161D))
-                                .border(1.dp, Color.White.copy(alpha = 0.28f), CircleShape)
-                                .clickable { exitAllFullscreen() }
-                                .padding(horizontal = 18.dp, vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.Close,
-                                contentDescription = "Exit fullscreen",
-                                tint = Color.White,
-                                modifier = Modifier.size(18.dp),
-                            )
-                            Text(
-                                text = "Exit fullscreen",
-                                style = MaterialTheme.typography.labelLarge,
-                                fontWeight = FontWeight.SemiBold,
-                                color = Color.White,
-                            )
-                        }
+                        Icon(
+                            imageVector = Icons.Filled.Close,
+                            contentDescription = "Exit fullscreen",
+                            tint = Color.White,
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Text(
+                            text = "Exit fullscreen",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.White,
+                        )
                     }
                 }
             }
@@ -680,7 +687,6 @@ fun WebApp(content: String) {
                 visible = showBrightnessBoosterSheet,
                 enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
                 exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
-                modifier = Modifier.fillMaxSize(),
             ) {
                 val pct = (brightnessLevel * 100).toInt()
                 val boosted = brightnessLevel >= 0.85f

@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Home
@@ -514,5 +515,85 @@ private fun CarPlayMediaCard(now: NowPlaying, modifier: Modifier) {
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 GsIconButton(
-                    MediaIcons.Previous,
-                    stringResource(R
+                    icon = MediaIcons.Previous,
+                    contentDescription = stringResource(R.string.player_previous),
+                    onClick = media::previous,
+                    enabled = now.canDo(PlaybackState.ACTION_SKIP_TO_PREVIOUS),
+                    size = 44.dp,
+                    iconSize = 24.dp,
+                )
+                GsIconButton(
+                    icon = if (now.playing) MediaIcons.Pause else Icons.Filled.PlayArrow,
+                    contentDescription = stringResource(if (now.playing) R.string.player_pause else R.string.media_play),
+                    onClick = media::togglePlay,
+                    tone = GsTone.Primary,
+                    size = 50.dp,
+                    iconSize = 26.dp,
+                )
+                GsIconButton(
+                    icon = MediaIcons.Next,
+                    contentDescription = stringResource(R.string.player_next),
+                    onClick = media::next,
+                    enabled = now.canDo(PlaybackState.ACTION_SKIP_TO_NEXT),
+                    size = 44.dp,
+                    iconSize = 24.dp,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SideLyrics(now: NowPlaying, modifier: Modifier) {
+    val navigator = LocalCarNavigator.current
+    Surface(
+        modifier = modifier
+            .gsPanelShadow(CARD_SHAPE)
+            .border(1.dp, Color.White.copy(alpha = 0.55f), CARD_SHAPE),
+        shape = CARD_SHAPE,
+        color = Color.White.copy(alpha = 0.68f),
+        contentColor = Color(0xFF141722),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(
+                    text = now.title.ifBlank { stringResource(R.string.storage_lyrics) },
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                GsIconButton(
+                    icon = Icons.Filled.Close,
+                    contentDescription = stringResource(R.string.navbar_close_panel),
+                    onClick = navigator::togglePlayerDock,
+                    size = 32.dp,
+                    iconSize = 18.dp,
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = now.artist.ifBlank { stringResource(R.string.storage_lyrics) },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color(0xFF141722).copy(alpha = 0.78f),
+                )
+            }
+        }
+    }
+}
