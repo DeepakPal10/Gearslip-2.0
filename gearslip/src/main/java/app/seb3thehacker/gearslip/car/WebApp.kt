@@ -522,3 +522,205 @@ fun WebApp(content: String) {
                                 pageFullscreen = null
                                 if (videoMadeFullscreen) CarFullscreen.exit()
                             }
+                        }
+                        addJavascriptInterface(
+                            FieldFocusBridge(onFocus = { fieldText = it }, onBlur = { fieldText = null }),
+                            "GearslipField",
+                        )
+                        val initial = PinnedWebSites.consumePendingUrl() ?: content
+                        if (initial.isNotBlank()) {
+                            atStart = false
+                            loadContent(this, initial)
+                        }
+                        web = this
+                    }
+                },
+                update = { it.settings.isAlgorithmicDarkeningAllowed = darkOutside },
+                onRelease = { it.destroy() },
+            )
+            if (atStart) {
+                Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
+                    BrowserStartPage(
+                        onOpen = open,
+                        onSearch = {
+                            fieldText = null
+                            address = ""
+                        },
+                        onAdd = { newBookmark = "https://" },
+                    )
+                }
+            }
+            pageFullscreen?.let { (view, _) ->
+                androidx.compose.runtime.key(view) {
+                    AndroidView(
+                        factory = { context ->
+                            FrameLayout(context).apply {
+                                setBackgroundColor(android.graphics.Color.BLACK)
+                                (view.parent as? ViewGroup)?.removeView(view)
+                                addView(view, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+                            }
+                        },
+                        modifier = Modifier.fillMaxSize(),
+                        onRelease = { it.removeAllViews() },
+                    )
+                }
+            }
+
+            if (hideChromeForFullscreen) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .fillMaxWidth()
+                        .height(52.dp)
+                        .pointerInput(Unit) {
+                            var totalDragY = 0f
+                            detectVerticalDragGestures(
+                                onDragStart = { totalDragY = 0f },
+                                onVerticalDrag = { _, dragAmount ->
+                                    totalDragY += dragAmount
+                                    if (totalDragY > 24f && !showExitFullscreenPill) {
+                                        showExitFullscreenPill = true
+                                        exitPillTriggerCount++
+                                    }
+                                },
+                            )
+                        },
+                )
+
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = showExitFullscreenPill,
+                    enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
+                    exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut(),
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 14.dp),
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .background(Color(0xDD14161D))
+                            .border(1.dp, Color.White.copy(alpha = 0.28f), CircleShape)
+                            .clickable { exitAllFullscreen() }
+                            .padding(horizontal = 18.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Close,
+                            contentDescription = "Exit fullscreen",
+                            tint = Color.White,
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Text(
+                            text = "Exit fullscreen",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.White,
+                        )
+                    }
+                }
+            }
+
+            // Bottom-to-up swipe zone for "Open Brightness Booster" pill
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .height(52.dp)
+                    .pointerInput(Unit) {
+                        var upwardDrag = 0f
+                        detectVerticalDragGestures(
+                            onDragStart = { upwardDrag = 0f },
+                            onVerticalDrag = { _, dragAmount ->
+                                if (dragAmount < 0f) {
+                                    upwardDrag += -dragAmount
+                                    if (upwardDrag > 24f && !showBrightnessBoosterSheet) {
+                                        showBrightnessPill = true
+                                        brightnessPillTriggerCount++
+                                    }
+                                }
+                            },
+                        )
+                    },
+            )
+
+            androidx.compose.animation.AnimatedVisibility(
+                visible = showBrightnessPill && !showBrightnessBoosterSheet,
+                enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+                exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 14.dp),
+            ) {
+                Row(
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .background(Color(0xEE14161D))
+                        .border(1.dp, Color.White.copy(alpha = 0.28f), CircleShape)
+                        .clickable {
+                            showBrightnessPill = false
+                            showBrightnessBoosterSheet = true
+                            boosterInteractionTick++
+                        }
+                        .padding(horizontal = 18.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Star,
+                        contentDescription = "Open Brightness Booster",
+                        tint = Color(0xFFFFC107),
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Text(
+                        text = "Open Brightness Booster",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color.White,
+                    )
+                }
+            }
+
+            androidx.compose.animation.AnimatedVisibility(
+                visible = showBrightnessBoosterSheet,
+                enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+                exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+            ) {
+                val pct = (brightnessLevel * 100).toInt()
+                val boosted = brightnessLevel >= 0.85f
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.45f))
+                        .clickable { showBrightnessBoosterSheet = false },
+                    contentAlignment = Alignment.BottomCenter,
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth(0.92f)
+                            .padding(bottom = 20.dp)
+                            .clip(RoundedCornerShape(24.dp))
+                            .background(Color(0xF2181B24))
+                            .border(1.dp, Color.White.copy(alpha = 0.2f), RoundedCornerShape(24.dp))
+                            .clickable(enabled = false) {}
+                            .padding(18.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp),
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Star,
+                                    contentDescription = null,
+                                    tint = if (boosted) Color(0xFFFFC107) else Color.White,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                                Text(
+                                    text = if (boosted) "Brightness Booster · $pct% (BOOST)" else "Brightness Booster · $pct%",
+                                    style = MaterialTheme.typography.titleMedium,
