@@ -63,12 +63,12 @@ layout.buildDirectory.set(rootProject.layout.buildDirectory.dir("gearslip"))
 
 android {
     namespace = "app.seb3thehacker.gearslip"
-    compileSdk = 37
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "app.seb3thehacker.gearslip"
         minSdk = 31
-        targetSdk = 37
+        targetSdk = 35
         versionCode = gitVersion.code
         // -PgearslipVersionName=0.1.99-test makes a build that thinks it's older, to try the updater.
         versionName = project.findProperty("gearslipVersionName")?.toString() ?: gitVersion.name
@@ -76,6 +76,10 @@ android {
         // Where opted-in phones send their daily usage note: the stats-worker/ Worker's address,
         // set as gearslipStatsUrl in gradle.properties. Left empty, nothing is ever sent.
         buildConfigField("String", "STATS_URL", "\"${project.findProperty("gearslipStatsUrl") ?: ""}\"")
+        // Speech-to-text (sherpa-onnx 1.13.8, static-link-onnxruntime build, in jniLibs) is the
+        // only native code. One APK for all three, since the updater takes the release's only APK;
+        // 32-bit x86 is left out, nothing that drives a car runs it.
+        ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64") }
     }
 
     signingConfigs {
@@ -129,7 +133,7 @@ android {
     // Only languages that are mostly translated ship, so the app never comes up half in English.
     // Danish and Estonian are still early on Weblate; add them here once they're close to done.
     androidResources {
-        generateLocaleConfig = true 
+        generateLocaleConfig = true
     }
 
     lint {
@@ -142,13 +146,6 @@ android {
         targetCompatibility = JavaVersion.VERSION_21
     }
 
-    defaultConfig {
-        // Speech-to-text (sherpa-onnx 1.13.8, static-link-onnxruntime build, in jniLibs) is the
-        // only native code. One APK for all three, since the updater takes the release's only APK;
-        // 32-bit x86 is left out, nothing that drives a car runs it.
-        ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64") }
-    }
-
     // Compressed, the three copies cost a 33 MB download instead of 75 MB; the phone unpacks
     // only its own at install.
     packaging { jniLibs { useLegacyPackaging = true } }
@@ -157,7 +154,6 @@ android {
         // GearslipLog calls android.util.Log, which is a stub on the local JVM.
         unitTests.isReturnDefaultValues = true
     }
-
 }
 
 // Copies the produced APK to the root build/ folder (<root>/build/Gearslip-debug.apk) after the
