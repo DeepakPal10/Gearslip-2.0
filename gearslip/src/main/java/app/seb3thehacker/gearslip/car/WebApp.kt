@@ -660,4 +660,416 @@ fun WebApp(content: String) {
                                 addView(
                                     view,
                                     FrameLayout.LayoutParams(
-                                        ViewGroup.LayoutParams.MATCH_
+                                        ViewGroup.LayoutParams.MATCH_PARENT,
+                                        ViewGroup.LayoutParams.MATCH_PARENT,
+                                    ),
+                                )
+                            }
+                        },
+                        modifier = Modifier.fillMaxSize(),
+                        onRelease = { it.removeAllViews() },
+                    )
+                }
+            }
+
+            if (hideChromeForFullscreen) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .fillMaxWidth()
+                        .height(52.dp)
+                        .pointerInput(Unit) {
+                            var totalDragY = 0f
+                            detectVerticalDragGestures(
+                                onDragStart = { totalDragY = 0f },
+                                onVerticalDrag = { _, dragAmount ->
+                                    totalDragY += dragAmount
+                                    if (totalDragY > 24f && !showExitFullscreenPill) {
+                                        showExitFullscreenPill = true
+                                        exitPillTriggerCount++
+                                    }
+                                },
+                            )
+                        },
+                )
+
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = showExitFullscreenPill,
+                    enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
+                    exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut(),
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 14.dp),
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .background(Color(0xDD14161D))
+                            .border(1.dp, Color.White.copy(alpha = 0.28f), CircleShape)
+                            .clickable { exitAllFullscreen() }
+                            .padding(horizontal = 18.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Close,
+                            contentDescription = "Exit fullscreen",
+                            tint = Color.White,
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Text(
+                            text = "Exit fullscreen",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.White,
+                        )
+                    }
+                }
+            }
+
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .height(52.dp)
+                    .pointerInput(Unit) {
+                        var upwardDrag = 0f
+                        detectVerticalDragGestures(
+                            onDragStart = { upwardDrag = 0f },
+                            onVerticalDrag = { _, dragAmount ->
+                                if (dragAmount < 0f) {
+                                    upwardDrag += -dragAmount
+                                    if (upwardDrag > 24f && !showBrightnessBoosterSheet) {
+                                        showBrightnessPill = true
+                                        brightnessPillTriggerCount++
+                                    }
+                                }
+                            },
+                        )
+                    },
+            )
+
+            androidx.compose.animation.AnimatedVisibility(
+                visible = showBrightnessPill && !showBrightnessBoosterSheet,
+                enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+                exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 14.dp),
+            ) {
+                Row(
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .background(Color(0xEE14161D))
+                        .border(1.dp, Color.White.copy(alpha = 0.28f), CircleShape)
+                        .clickable {
+                            showBrightnessPill = false
+                            showBrightnessBoosterSheet = true
+                            boosterInteractionTick++
+                        }
+                        .padding(horizontal = 18.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Star,
+                        contentDescription = "Display Brightness",
+                        tint = Color(0xFFFFC107),
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Text(
+                        text = "Display Brightness",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color.White,
+                    )
+                }
+            }
+
+            androidx.compose.animation.AnimatedVisibility(
+                visible = showBrightnessBoosterSheet,
+                enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+                exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+            ) {
+                val pct = (brightnessLevel * 100).toInt()
+                val isMax = brightnessLevel >= 0.99f
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.45f))
+                        .clickable { showBrightnessBoosterSheet = false },
+                    contentAlignment = Alignment.BottomCenter,
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth(0.92f)
+                            .padding(bottom = 20.dp)
+                            .clip(RoundedCornerShape(24.dp))
+                            .background(Color(0xF2181B24))
+                            .border(1.dp, Color.White.copy(alpha = 0.2f), RoundedCornerShape(24.dp))
+                            .clickable(enabled = false) {}
+                            .padding(18.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp),
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Star,
+                                    contentDescription = null,
+                                    tint = if (isMax) Color(0xFFFFC107) else Color.White,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                                Text(
+                                    text = if (isMax) "Screen Brightness · $pct% (MAX)" else "Screen Brightness · $pct%",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color.White,
+                                )
+                            }
+                            Icon(
+                                imageVector = Icons.Filled.Close,
+                                contentDescription = "Close",
+                                tint = Color.White.copy(alpha = 0.8f),
+                                modifier = Modifier
+                                    .size(22.dp)
+                                    .clickable { showBrightnessBoosterSheet = false },
+                            )
+                        }
+
+                        Slider(
+                            value = brightnessLevel,
+                            onValueChange = { newVal ->
+                                brightnessLevel = newVal.coerceIn(0.1f, 1.0f)
+                                applyInfotainmentBrightness(context, hostView, brightnessLevel)
+                                boosterInteractionTick++
+                            },
+                            valueRange = 0.1f..1.0f,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(CircleShape)
+                                    .background(Color.White.copy(alpha = 0.14f))
+                                    .clickable {
+                                        brightnessLevel = 0.4f
+                                        applyInfotainmentBrightness(context, hostView, brightnessLevel)
+                                        boosterInteractionTick++
+                                    }
+                                    .padding(vertical = 10.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text("40% Dim", color = Color.White, fontWeight = FontWeight.Medium)
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(CircleShape)
+                                    .background(Color.White.copy(alpha = 0.14f))
+                                    .clickable {
+                                        brightnessLevel = 0.7f
+                                        applyInfotainmentBrightness(context, hostView, brightnessLevel)
+                                        boosterInteractionTick++
+                                    }
+                                    .padding(vertical = 10.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text("70%", color = Color.White, fontWeight = FontWeight.Medium)
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFFFFC107))
+                                    .clickable {
+                                        brightnessLevel = 1.0f
+                                        applyInfotainmentBrightness(context, hostView, brightnessLevel)
+                                        boosterInteractionTick++
+                                    }
+                                    .padding(vertical = 10.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Text("Max (100%)", color = Color(0xFF14161D), fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        address?.let { typed ->
+            CarKeyboard(
+                text = typed,
+                onTextChange = { address = it },
+                onSubmit = {
+                    open(BrowserSettings.addressToUrl(typed))
+                    address = null
+                },
+                onDismiss = { address = null },
+            )
+        }
+        newBookmark?.let { typed ->
+            CarKeyboard(
+                text = typed,
+                onTextChange = { newBookmark = it },
+                onSubmit = {
+                    val text = typed.trim()
+                    val bmUrl = when {
+                        text.startsWith("http://") || text.startsWith("https://") -> text
+                        ' ' !in text && '.' in text -> "https://$text"
+                        else -> null
+                    }
+                    if (bmUrl != null && BrowserSettings.addBookmark("", bmUrl)) {
+                        CarToasts.show(
+                            BrowserSettings,
+                            context.getString(R.string.web_bookmark_added),
+                            CarToast.LENGTH_SHORT,
+                        )
+                    }
+                    newBookmark = null
+                },
+                onDismiss = { newBookmark = null },
+            )
+        }
+        fieldText?.let { text ->
+            CarKeyboard(
+                text = text,
+                onTextChange = { updated ->
+                    fieldText = updated
+                    web?.evaluateJavascript(setFieldValueJs(updated), null)
+                },
+                onSubmit = { web?.evaluateJavascript(SUBMIT_FIELD_JS, null) },
+                onDismiss = {
+                    fieldText = null
+                    web?.evaluateJavascript(BLUR_FIELD_JS, null)
+                },
+            )
+        }
+    }
+}
+
+private class LoggingClient(
+    private val ring: String,
+    private val documentUrl: AtomicReference<String?>,
+    private val onStarted: (String?) -> Unit,
+    private val onLoaded: (WebView) -> Unit,
+) : WebViewClient() {
+    override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? =
+        request?.let { AdBlockManager.response(it, documentUrl.get()) }
+
+    override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
+        documentUrl.set(url)
+        onStarted(url)
+        if (CosmeticFilterBridge.needsPageStartFallback) {
+            view?.evaluateJavascript(CosmeticFilterBridge.INJECTION_JS, null)
+            view?.evaluateJavascript(YouTubeAdBlock.INJECTION_JS, null)
+        }
+    }
+
+    override fun onPageFinished(view: WebView?, url: String?) {
+        documentUrl.set(url)
+        GearslipLog.i("car web page loaded: $url")
+        AdBlockManager.logPageCost(url)
+        view?.let(onLoaded)
+        view?.let { wv ->
+            wv.evaluateJavascript(BrowserExtensionsManager.combinedJs(wv.context), null)
+        }
+        view?.evaluateJavascript(FOCUS_TRACKING_JS, null)
+        view?.evaluateJavascript(focusRingJs(ring), null)
+    }
+
+    override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: WebResourceError?) {
+        if (request?.isForMainFrame == true) {
+            GearslipLog.e("car web page FAILED: ${request.url} - ${error?.errorCode} ${error?.description}")
+        }
+    }
+
+    override fun onReceivedHttpError(view: WebView?, request: WebResourceRequest?, response: WebResourceResponse?) {
+        if (request?.isForMainFrame == true) {
+            GearslipLog.w("car web page HTTP ${response?.statusCode} for ${request.url}")
+        }
+    }
+}
+
+private class FieldFocusBridge(private val onFocus: (String) -> Unit, private val onBlur: () -> Unit) {
+    private val main = Handler(Looper.getMainLooper())
+
+    @JavascriptInterface
+    fun focused(value: String) {
+        main.post { onFocus(value) }
+    }
+
+    @JavascriptInterface
+    fun blurred() {
+        main.post { onBlur() }
+    }
+}
+
+private fun setFieldValueJs(value: String) = """
+    (function() {
+        var el = document.activeElement;
+        if (!el) return;
+        var proto = el.tagName === 'TEXTAREA' ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
+        var setter = Object.getOwnPropertyDescriptor(proto, 'value');
+        if (setter && setter.set) { setter.set.call(el, ${JSONObject.quote(value)}); } else { el.value = ${JSONObject.quote(value)}; }
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+    })();
+""".trimIndent()
+
+private const val BLUR_FIELD_JS = "document.activeElement && document.activeElement.blur();"
+
+private const val SUBMIT_FIELD_JS = """
+    (function() {
+        var el = document.activeElement;
+        if (!el) return;
+        var enter = new KeyboardEvent('keydown', {
+            key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true,
+        });
+        var notHandled = el.dispatchEvent(enter);
+        if (notHandled && el.form) {
+            if (el.form.requestSubmit) el.form.requestSubmit(); else el.form.submit();
+        }
+    })();
+"""
+
+private fun focusRingJs(color: String) = """
+    (function() {
+        if (document.getElementById('gearslip-focus-ring')) return;
+        var style = document.createElement('style');
+        style.id = 'gearslip-focus-ring';
+        style.textContent = ':focus-visible { outline: 3px solid $color !important; outline-offset: 2px !important; }';
+        (document.head || document.documentElement).appendChild(style);
+    })();
+"""
+
+private const val FOCUS_TRACKING_JS = """
+    (function() {
+        function isEditable(el) {
+            if (!el) return false;
+            var tag = el.tagName;
+            if (tag === 'TEXTAREA') return true;
+            if (el.isContentEditable) return true;
+            if (tag !== 'INPUT') return false;
+            var skip = ['button', 'submit', 'checkbox', 'radio', 'range', 'color', 'file', 'image', 'reset'];
+            return skip.indexOf((el.type || 'text').toLowerCase()) === -1;
+        }
+        document.addEventListener('focusin', function(e) {
+            if (isEditable(e.target)) window.GearslipField.focused(e.target.value || '');
+        });
+        document.addEventListener('focusout', function(e) {
+            if (isEditable(e.target)) window.GearslipField.blurred();
+        });
+    })();
+"""
