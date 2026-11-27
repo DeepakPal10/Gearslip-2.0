@@ -11,6 +11,7 @@ import org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile
  */
 plugins {
     alias(libs.plugins.android.application)
+    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
 }
 
@@ -208,4 +209,3 @@ tasks.withType<KotlinJvmCompile>().configureEach {
         jvmTarget.set(JvmTarget.JVM_21)
     }
 }
-
