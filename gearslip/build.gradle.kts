@@ -129,11 +129,7 @@ android {
     // Only languages that are mostly translated ship, so the app never comes up half in English.
     // Danish and Estonian are still early on Weblate; add them here once they're close to done.
     androidResources {
-        generateLocaleConfig = true
-        localeFilters += listOf(
-            "en", "ar", "cs", "de", "es", "fr", "it", "ja", "ko", "nl", "pl", "pt-rBR", "ro", "ru",
-            "sv", "tr", "uk", "zh-rCN",
-        )
+        generateLocaleConfig = true 
     }
 
     lint {
