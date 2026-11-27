@@ -606,8 +606,10 @@ fun WebApp(content: String) {
                             override fun onReceivedIcon(view: WebView?, icon: Bitmap?) {
                                 pageIcon = icon
                                 val host = view?.url?.let { PinnedWebSites.extractHost(it) }.orEmpty()
-                                if (icon != null && host.isNotEmpty()) {
-                                    runCatching { SiteIcons.save(view.context, host, icon) }
+                                view?.context?.let { ctx ->
+                                    if (icon != null && host.isNotEmpty()) {
+                                        runCatching { SiteIcons.save(ctx, host, icon) }
+                                    }
                                 }
                             }
 
