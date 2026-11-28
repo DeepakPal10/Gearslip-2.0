@@ -63,7 +63,7 @@ layout.buildDirectory.set(rootProject.layout.buildDirectory.dir("gearslip"))
 
 android {
     namespace = "app.seb3thehacker.gearslip"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "app.seb3thehacker.gearslip"
