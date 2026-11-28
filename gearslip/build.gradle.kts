@@ -200,9 +200,10 @@ tasks.withType<KotlinJvmCompile>().configureEach {
     compilerOptions {
         jvmTarget.set(JvmTarget.JVM_21)
     }
-    tasks.configureEach {
-        if (name.startsWith("check") && name.endsWith("Classpath")) {
-            enabled = false
-        }
+}
+
+tasks.configureEach {
+    if (name.startsWith("check") && name.endsWith("Classpath")) {
+        enabled = false
     }
 }
