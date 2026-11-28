@@ -12,11 +12,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up JDK 17
+      - name: Set up JDK 21 (JetBrains)
         uses: actions/setup-java@v4
         with:
-          java-version: '17'
-          distribution: 'temurin'
+          distribution: 'jetbrains'
+          java-version: '21'
 
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
